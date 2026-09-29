@@ -1,0 +1,85 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Install dependencies
+        run: npm ci
+      - name: Run unit tests
+        run: npm test
+
+  deploy:
+    name: Deploy to Cloudflare Pages
+    needs: test
+    # Deploy jalan untuk push ke main DAN run manual (workflow_dispatch) dari main,
+    # supaya bisa redeploy tanpa commit baru (mis. setelah mengganti secret).
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Ensure Cloudflare Pages project exists
+        run: npx wrangler pages project create byga-ai-multivote --production-branch=main || true
+
+      # Semua migration dijalankan urut nama file (0001, 0002, 0003, ...).
+      # Aman dijalankan berulang karena setiap file memakai CREATE ... IF NOT EXISTS.
+      # Jangan tambah migration yang tidak idempoten tanpa mengubah langkah ini.
+      - name: Run D1 migrations (remote)
+        run: |
+          for f in $(ls migrations/*.sql | sort); do
+            echo "==> $f"
+            npx wrangler d1 execute byga-ai-multivote-db --remote --file="$f"
+          done
+
+      # Secret login dipasang dari GitHub Secrets ke Pages (bukan ke Worker).
+      # Harus SEBELUM deploy: secret baru hanya terbaca oleh deployment berikutnya.
+      # printf '%s' dipakai agar nilai tidak ikut newline di akhir.
+      - name: Validate GitHub login secrets
+        env:
+          APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+        run: |
+          test -n "$APP_PASSWORD" || { echo "ERROR: GitHub Secret APP_PASSWORD kosong/tidak tersedia"; exit 1; }
+          test -n "$SESSION_SECRET" || { echo "ERROR: GitHub Secret SESSION_SECRET kosong/tidak tersedia"; exit 1; }
+          echo "GitHub login secrets tersedia."
+
+      - name: Set Pages secrets (login)
+        env:
+          APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+        run: |
+          printf '%s' "$APP_PASSWORD"   | npx wrangler pages secret put APP_PASSWORD   --project-name=byga-ai-multivote
+          printf '%s' "$SESSION_SECRET" | npx wrangler pages secret put SESSION_SECRET --project-name=byga-ai-multivote
+
+      - name: Deploy to Cloudflare Pages
+        run: npx wrangler pages deploy dashboard --project-name=byga-ai-multivote

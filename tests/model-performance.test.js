@@ -1,0 +1,5 @@
+import{describe,it,expect}from"vitest";import{computeModelPerformance}from"../src/lib/modelPerformance.js";
+const H=3600000,T=Date.parse("2026-09-20T00:00:00Z");
+function a(i,signal){return{id:String(i),created_at:new Date(T+i*H).toISOString(),exchange:"binance",symbol:"BTCUSDT",last_price:100,results:[{provider:"gpt",provider_label:"GPT",status:"success",signal,adapter_version:"1.0"}]};}
+function c(){return Array.from({length:20},(_,i)=>({timestamp:T+i*H,open:100,high:103,low:97,close:i%2?98:102,closed:true}));}
+describe("computeModelPerformance",()=>{it("attributes outcomes to the exact provider",()=>{const rows=[a(0,"BUY"),a(1,"BUY"),a(2,"SELL")],m=new Map([["binance:BTCUSDT",c()]]),r=computeModelPerformance(rows,m,{horizonsHours:[1],now:T+20*H});expect(r.gpt.by_horizon["1"].n).toBe(3);expect(r.gpt.by_horizon["1"].hit_rate_pct).toBeGreaterThan(0);});it("does not mark a model ready for weighting on tiny samples",()=>{const m=new Map([["binance:BTCUSDT",c()]]),r=computeModelPerformance([a(0,"BUY")],m,{horizonsHours:[1],now:T+20*H});expect(r.gpt.weighting_ready["1"]).toBe(false);});});
