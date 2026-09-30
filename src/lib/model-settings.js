@@ -4,9 +4,8 @@ import { PROVIDERS } from "../providers/registry.js";
 export const MODEL_RE = /^[A-Za-z0-9._:/@+-]{1,120}$/;
 const KEY = "model_overrides";
 
-async function ensureTable(db) {
-  await db.prepare("CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)").run();
-}
+// The app_settings table is created by migrations/0005_app_settings.sql, which CI
+// applies before every deploy. No runtime CREATE TABLE here (it used to run on each request).
 
 // Keeps only known providers, valid model ids, and explicit enabled=false flags.
 export function sanitizeSettings(input) {
@@ -30,7 +29,6 @@ export function sanitizeSettings(input) {
 export async function loadModelSettings(db) {
   if (!db) return {};
   try {
-    await ensureTable(db);
     const row = await db.prepare("SELECT value FROM app_settings WHERE key = ?").bind(KEY).first();
     return row?.value ? sanitizeSettings(JSON.parse(row.value)) : {};
   } catch (error) {
@@ -40,7 +38,6 @@ export async function loadModelSettings(db) {
 }
 
 export async function saveModelSettings(db, settings) {
-  await ensureTable(db);
   const value = JSON.stringify(sanitizeSettings(settings));
   await db.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").bind(KEY, value, new Date().toISOString()).run();
   return JSON.parse(value);
