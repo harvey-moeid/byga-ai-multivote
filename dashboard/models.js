@@ -61,9 +61,12 @@
     });
 
     save.addEventListener('click', async () => {
-      if (!rows.some(r => r.cb.checked)) {
+      // Mirrors the server rule in functions/api/models.js: at least one enabled
+      // provider must have an API key, otherwise every analysis run would fail.
+      // The server still enforces it; this check only gives instant feedback.
+      if (!rows.some(r => r.cb.checked && r.it.key_configured)) {
         msg.className = 'mdl-msg err';
-        msg.textContent = 'Minimal satu model harus aktif.';
+        msg.textContent = 'Minimal satu model aktif yang sudah punya API key.';
         return;
       }
       const settings = {};
