@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PROVIDERS } from "../src/providers/registry.js";
+import { PROVIDERS, classifyProviderError } from "../src/providers/registry.js";
 
 describe("external AI provider registry", () => {
   it("contains all nine configured providers", () => {
@@ -12,5 +12,13 @@ describe("external AI provider registry", () => {
   it("has unique provider ids and labels", () => {
     expect(new Set(PROVIDERS.map(p => p.meta.provider)).size).toBe(9);
     expect(PROVIDERS.every(p => p.meta.providerLabel && p.meta.modelId)).toBe(true);
+  });
+
+  it("classifies provider HTTP failures into actionable error codes", () => {
+    expect(classifyProviderError(401, "Unauthorized")).toBe("AUTH_ERROR");
+    expect(classifyProviderError(429, "Too many requests")).toBe("RATE_LIMITED");
+    expect(classifyProviderError(404, "model not found")).toBe("MODEL_NOT_FOUND");
+    expect(classifyProviderError(400, "The model does not exist")).toBe("MODEL_NOT_FOUND");
+    expect(classifyProviderError(500, "upstream failure")).toBe("PROVIDER_SERVER_ERROR");
   });
 });

@@ -16,7 +16,6 @@ function extractText(data, kind) {
   return data?.choices?.[0]?.message?.content ?? data?.choices?.[0]?.text ?? "";
 }
 
-// buildPrompt() returns { system, user }; older callers may pass a plain string.
 function splitPrompt(prompt) {
   if (typeof prompt === "string") return { system: "", user: prompt };
   return { system: String(prompt?.system ?? ""), user: String(prompt?.user ?? "") };
@@ -27,6 +26,20 @@ function chatMessages({ system, user }) {
   if (system) messages.push({ role: "system", content: system });
   messages.push({ role: "user", content: user });
   return messages;
+}
+
+export function classifyProviderError(status, message = "") {
+  const text = String(message || "").toLowerCase();
+  if (status === 401) return "AUTH_ERROR";
+  if (status === 403) return "AUTH_FORBIDDEN";
+  if (status === 429) return "RATE_LIMITED";
+  if (
+    status === 404 ||
+    /model(?:\s+id)?\s*(?:not found|does not exist|is unavailable|not available)/i.test(text) ||
+    /unknown model|invalid model|model .*not.*found/i.test(text)
+  ) return "MODEL_NOT_FOUND";
+  if (status >= 500) return "PROVIDER_SERVER_ERROR";
+  return "PROVIDER_HTTP_ERROR";
 }
 
 async function request(def, { env, prompt, timeoutMs = 60000, maxRetries = 1 }) {
@@ -41,7 +54,6 @@ async function request(def, { env, prompt, timeoutMs = 60000, maxRetries = 1 }) 
     if (p.system) body.systemInstruction = { parts: [{ text: p.system }] };
     return send(url, { "content-type": "application/json" }, body, def, timeoutMs, maxRetries);
   }
-  // Cohere v2 and all OpenAI-compatible providers share the same messages format.
   return send(endpoint, { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, { model, messages: chatMessages(p), temperature: 0.2, max_tokens: 2048 }, def, timeoutMs, maxRetries);
 }
 
@@ -56,8 +68,9 @@ async function send(url, headers, body, def, timeoutMs, maxRetries) {
       let data;
       try { data = JSON.parse(text); } catch { data = null; }
       if (!response.ok) {
-        const message = data?.error?.message || data?.message || `Provider HTTP ${response.status}`;
-        const error = Object.assign(new Error(String(message).slice(0, 500)), { code: response.status === 429 ? "RATE_LIMITED" : "PROVIDER_HTTP_ERROR", status: response.status });
+        const message = data?.error?.message || data?.message || text || `Provider HTTP ${response.status}`;
+        const code = classifyProviderError(response.status, message);
+        const error = Object.assign(new Error(String(message).slice(0, 500)), { code, status: response.status });
         if (response.status < 500 && response.status !== 429) throw error;
         lastError = error;
       } else {

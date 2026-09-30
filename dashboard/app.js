@@ -3,6 +3,11 @@ const fmt=n=>Number.isFinite(Number(n))?Number(n).toLocaleString("en-US",{maximu
 const date=v=>v?new Date(v).toLocaleString("id-ID",{dateStyle:"medium",timeStyle:"short"}):"—";
 function signalClass(s){return String(s||"").toLowerCase().replace(/[^a-z_]/g,"")}
 function setSignal(el,s){el.textContent=s||"—";el.className="metric-value"+(s?" signal-"+signalClass(s):"")}
+function errorLabel(r){
+  const code=String(r?.error_code||"PROVIDER_ERROR");
+  const status=Number(r?.http_status||0);
+  return status ? status+" · "+code : code;
+}
 function renderAnalysis(d){
  const v=d.voting||{};setSignal($("consensus"),d.majority_signal);$("consensus-note").textContent=d.majority_signal==="NO_TRADE"?"Tidak ada mayoritas BUY/SELL":"Hasil mayoritas model";
  $("responses").textContent=v.success??d.success_count??"—";$("responses-total").textContent="/ "+(v.total_models??d.total_models??"—");
@@ -11,7 +16,14 @@ function renderAnalysis(d){
  const dur=Number(d.duration_ms);$("duration").textContent=Number.isFinite(dur)?(dur>=1000?(dur/1000).toFixed(1):String(dur)):"—";$("duration-unit").textContent=Number.isFinite(dur)?(dur>=1000?" sec":" ms"):"";
  $("price").textContent=d.last_price!=null?fmt(d.last_price):"—";const pct=Number(d.price_change_pct_24h);const ch=$("price-change");if(d.price_change_pct_24h!=null&&Number.isFinite(pct)){ch.textContent=(pct>0?"+":"")+pct.toFixed(2)+"% / 24H";ch.className="change "+(pct>0?"positive":pct<0?"negative":"")}else{ch.textContent="Last analyzed snapshot";ch.className="change"}
  $("last-updated").textContent="UPDATED "+date(d.created_at).toUpperCase();$("result-status").textContent="RESULT READY";$("result-status").className="result-status ready";$("result-empty").classList.add("hidden");
- const rows=Array.isArray(d.results)?d.results:[];$("model-results").innerHTML=rows.map((r,i)=>{const name=r.provider_label||r.provider||"Model";const sig=r.status==="success"?(r.signal||"NO_TRADE"):(r.status==="timeout"?"TIMEOUT":"ERROR");return '<div class="model-row"><span class="model-avatar">'+escapeHtml(name.slice(0,2).toUpperCase())+'</span><span class="model-info"><b>'+escapeHtml(name)+'</b><small>'+escapeHtml(r.status||"unknown")+(r.duration_ms!=null?" · "+fmt(r.duration_ms)+" ms":"")+'</small></span><span class="signal-pill '+signalClass(sig)+'">'+escapeHtml(sig.replace("_"," "))+'</span></div>'}).join("");
+ const rows=Array.isArray(d.results)?d.results:[];$("model-results").innerHTML=rows.map(r=>{
+   const name=r.provider_label||r.provider||"Model";
+   const failed=r.status!=="success";
+   const sig=failed?(r.status==="timeout"?"TIMEOUT":"ERROR"):(r.signal||"NO_TRADE");
+   const code=failed?errorLabel(r):"";
+   const detail=failed?((r.error||"").slice(0,180)):(r.status||"success");
+   return '<div class="model-row '+(failed?"model-row-error":"")+'"><span class="model-avatar">'+escapeHtml(name.slice(0,2).toUpperCase())+'</span><span class="model-info"><b>'+escapeHtml(name)+'</b><small>'+escapeHtml(failed?code:(r.status||"success"))+(r.duration_ms!=null?" · "+fmt(r.duration_ms)+" ms":"")+'</small>'+(failed?'<em class="model-error-message">'+escapeHtml(detail)+'</em>':"")+'</span><span class="signal-pill '+signalClass(sig)+(failed?" provider-error":"")+'">'+escapeHtml(failed?code:sig.replace("_"," "))+'</span></div>';
+ }).join("");
 }
 function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 async function loadHistory(){const body=$("history-body");try{const res=await fetch("/api/history?limit=20");if(!res.ok)throw Error("HTTP "+res.status);const data=await res.json();const items=data.items||[];if(!items.length){body.innerHTML='<tr><td colspan="6" class="table-empty">Belum ada riwayat analisis.</td></tr>';return}body.innerHTML=items.map(r=>'<tr><td class="id-cell">'+escapeHtml(r.id)+'</td><td>'+escapeHtml(date(r.created_at))+'</td><td>BTCUSDT</td><td><span class="signal-pill '+signalClass(r.majority_signal)+'">'+escapeHtml(r.majority_signal||"—")+'</span></td><td>'+escapeHtml((r.success_count??0)+"/"+(r.total_models??0))+'</td><td><button class="open-detail" data-id="'+escapeHtml(r.id)+'">Detail ↗</button></td></tr>').join("");body.querySelectorAll("[data-id]").forEach(b=>b.addEventListener("click",()=>showDetail(b.dataset.id)))}catch(e){body.innerHTML='<tr><td colspan="6" class="table-empty">Riwayat tidak dapat dimuat.</td></tr>'}}
