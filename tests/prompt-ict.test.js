@@ -42,14 +42,14 @@ function baseSnapshot(overrides = {}) {
 }
 
 function extractMarketData(user) {
-  const jsonMatch = user.match(/MARKET DATA \(JSON\):\n([\s\S]+?)\n\nCandle schema:/);
+  const jsonMatch = user.match(/MARKET DATA:\n([\s\S]+?)\nCandle schema:/);
   expect(jsonMatch).not.toBeNull();
   return JSON.parse(jsonMatch[1]);
 }
 
 describe("buildPrompt ICT integration", () => {
   it("bumps prompt version", () => {
-    expect(PROMPT_VERSION).toBe("1.12.0");
+    expect(PROMPT_VERSION).toBe("1.13.0");
   });
 
   it("includes canonical ICT context for every analysis", () => {
@@ -62,7 +62,7 @@ describe("buildPrompt ICT integration", () => {
     expect(data.ict.timeframes.h4).toBeDefined();
     expect(data.ict.hierarchy.alignment).toBeDefined();
     expect(system).toMatch(/deterministic ICT-style multi-timeframe framework/);
-    expect(user).toMatch(/ICT ANALYSIS CONTRACT/);
+    expect(user).toMatch(/ICT CONTRACT/);
     expect(user).toMatch(/Do not invent an FVG, OB, sweep, BOS, CHOCH, MSS/);
   });
 
