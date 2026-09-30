@@ -11,11 +11,23 @@
  * session). Everything else requires a valid signed session cookie (see
  * src/lib/auth.js); page requests without one are redirected to /login,
  * API requests get a 401 JSON body.
+ *
+ * For authenticated loads of the dashboard page, the model-settings UI
+ * (/models.js) is appended to the HTML here, so index.html stays untouched.
  */
 
 import { isAuthenticated } from "../src/lib/auth.js";
 
 const PUBLIC_PATHS = new Set(["/login", "/login.html", "/login.js", "/api/login", "/api/ingest"]);
+
+async function withModelsUi(path, response) {
+  const isDashboard = path === "/" || path === "/index.html";
+  const isHtml = String(response.headers.get("content-type") || "").includes("text/html");
+  if (!isDashboard || !isHtml || typeof HTMLRewriter === "undefined") return response;
+  return new HTMLRewriter()
+    .on("body", { element(el) { el.append('<script src="/models.js"></script>', { html: true }); } })
+    .transform(response);
+}
 
 export async function onRequest(context) {
   const { request, env, next } = context;
@@ -40,7 +52,7 @@ export async function onRequest(context) {
   }
 
   const authed = await isAuthenticated(request, env.SESSION_SECRET);
-  if (authed) return next();
+  if (authed) return withModelsUi(path, await next());
 
   if (path.startsWith("/api/")) {
     return json(401, { error_code: "UNAUTHENTICATED", error: "Silakan login terlebih dahulu." });

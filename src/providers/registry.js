@@ -76,6 +76,6 @@ async function send(url, headers, body, def, timeoutMs, maxRetries) {
 }
 
 export const PROVIDERS = definitions.map(def => ({
-  meta: { provider: def.provider, providerLabel: def.providerLabel, modelId: def.defaultModel, adapterVersion: "1.0.0" },
+  meta: { provider: def.provider, providerLabel: def.providerLabel, modelId: def.defaultModel, modelEnv: def.modelEnv, keyEnv: def.keyEnv, adapterVersion: "1.0.0" },
   run: args => request(def, args)
 }));

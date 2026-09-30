@@ -5,6 +5,7 @@ import { selectProviders } from "./select-providers.js";
 import { parseSignal } from "./normalizer.js";
 import { computeVoting } from "./voting.js";
 import { saveAnalysis } from "../lib/storage.js";
+import { loadModelSettings, applyModelOverrides } from "../lib/model-settings.js";
 
 const nowIso = () => new Date().toISOString();
 const number = (v, fallback) => Number.isFinite(Number(v)) ? Number(v) : fallback;
@@ -23,8 +24,11 @@ export async function runAnalysis(env, logger = () => {}, { models } = {}) {
     db: env.DB, env
   });
   const prompt = buildPrompt(snapshot, null);
-  const selected = selectProviders(PROVIDERS, models);
-  if (!selected.length) throw new Error("No AI providers are configured");
+  // Per-provider overrides (model id + enabled flag) saved from the dashboard.
+  const settings = await loadModelSettings(env.DB);
+  const selected = selectProviders(PROVIDERS, models).filter(p => settings[p.meta.provider]?.enabled !== false);
+  if (!selected.length) throw new Error("No AI providers are enabled");
+  const runEnv = applyModelOverrides(env, settings);
 
   const timeoutMs = Math.max(1000, number(env.AI_TIMEOUT_MS, 60000));
   const maxRetries = Math.max(0, Math.min(5, number(env.MAX_RETRIES, 1)));
@@ -33,7 +37,7 @@ export async function runAnalysis(env, logger = () => {}, { models } = {}) {
     const meta = provider.meta || {};
     try {
       if (typeof provider.run !== "function") throw Object.assign(new Error("Provider adapter is not implemented"), { code: "ADAPTER_NOT_CONFIGURED" });
-      const raw = await provider.run({ env, prompt, timeoutMs, maxRetries });
+      const raw = await provider.run({ env: runEnv, prompt, timeoutMs, maxRetries });
       const answer = typeof raw === "string" ? raw : (raw?.raw_answer ?? raw?.text ?? raw?.content ?? "");
       const parsed = raw?.signal ? { signal: String(raw.signal).toUpperCase(), reason: raw.reason || "" } : parseSignal(answer);
       if (!["BUY", "SELL", "NO_TRADE"].includes(parsed.signal)) {
