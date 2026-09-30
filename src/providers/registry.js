@@ -5,7 +5,7 @@ const definitions = [
   { provider: "mistral-ai", providerLabel: "Mistral AI", modelEnv: "MISTRAL_MODEL", keyEnv: "MISTRAL_API_KEY", endpoint: "https://api.mistral.ai/v1/chat/completions", defaultModel: "mistral-small-latest" },
   { provider: "hugging-face", providerLabel: "Hugging Face", modelEnv: "HF_MODEL", keyEnv: "HF_TOKEN", endpoint: "https://router.huggingface.co/v1/chat/completions", defaultModel: "openai/gpt-oss-120b:fastest" },
   { provider: "cohere", providerLabel: "Cohere", modelEnv: "COHERE_MODEL", keyEnv: "COHERE_API_KEY", endpoint: "https://api.cohere.com/v2/chat", kind: "cohere", defaultModel: "command-a-plus-05-2026" },
-  { provider: "nvidia-api-catalog", providerLabel: "NVIDIA API Catalog", modelEnv: "NVIDIA_MODEL", keyEnv: "NVIDIA_API_KEY", endpoint: "https://integrate.api.nvidia.com/v1/chat/completions", defaultModel: "openai/gpt-oss-20b" },
+  { provider: "nvidia-api-catalog", providerLabel: "NVIDIA API Catalog", modelEnv: "NVIDIA_MODEL", keyEnv: "NVIDIA_API_KEY", endpoint: "https://integrate.api.nvidia.com/v1/chat/completions", kind: "nvidia-api-catalog", defaultModel: "openai/gpt-oss-20b" },
   { provider: "sambanova-cloud", providerLabel: "SambaNova Cloud", modelEnv: "SAMBANOVA_MODEL", keyEnv: "SAMBANOVA_API_KEY", endpointEnv: "SAMBANOVA_BASE_URL", endpoint: "https://api.sambanova.ai/v1/chat/completions", defaultModel: "DeepSeek-V3.1" },
   { provider: "vercel-ai-gateway", providerLabel: "Vercel AI Gateway", modelEnv: "AI_GATEWAY_MODEL", keyEnv: "AI_GATEWAY_API_KEY", endpoint: "https://ai-gateway.vercel.sh/v1/chat/completions", defaultModel: "openai/gpt-oss-120b" }
 ];
@@ -21,7 +21,7 @@ function extractText(data, kind) {
   if (kind === "cohere") {
     const content = data?.message?.content;
     if (Array.isArray(content)) {
-      return content.map(part => {
+      return content.filter(part => typeof part === "string" || part?.type === "text").map(part => {
         if (typeof part === "string") return part;
         return typeof part?.text === "string" ? part.text : "";
       }).join("\n").trim();
@@ -80,11 +80,34 @@ async function request(def, { env, prompt, timeoutMs = 60000, maxRetries = 1 }) 
   return send(
     endpoint,
     { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-    { model, messages: chatMessages(p), temperature: 0.2, max_tokens: 512 },
+    { model, messages: chatMessages(p), temperature: 0.2, max_tokens: def.kind === "nvidia-api-catalog" ? 768 : 512, ...(def.kind === "nvidia-api-catalog" ? { reasoning_effort: "low", stream: false } : {}) },
     def,
     timeoutMs,
     maxRetries
   );
+}
+
+async function pollNvidia(requestId, headers, timeoutMs) {
+  const deadline = Date.now() + Math.max(1000, timeoutMs);
+  const pollUrl = "https://api.nvcf.nvidia.com/v2/nvcf/pexec/status/" + encodeURIComponent(requestId);
+  while (Date.now() < deadline) {
+    const response = await fetch(pollUrl, { headers, method: "GET" });
+    const responseText = await response.text();
+    let data;
+    try { data = JSON.parse(responseText); } catch { data = null; }
+    if (response.status === 202) {
+      await new Promise(resolve => setTimeout(resolve, 250));
+      continue;
+    }
+    if (!response.ok) {
+      const message = data?.error?.message || data?.message || responseText || `NVIDIA polling HTTP ${response.status}`;
+      throw Object.assign(new Error(String(message).slice(0, 1000)), { code: classifyProviderError(response.status, message), status: response.status });
+    }
+    const answer = extractText(data, "nvidia-api-catalog");
+    if (!answer) throw Object.assign(new Error("Provider returned no text content"), { code: "EMPTY_AI_RESPONSE" });
+    return { raw_answer: answer };
+  }
+  throw Object.assign(new Error("AI provider request timed out"), { name: "TimeoutError", code: "AI_TIMEOUT" });
 }
 
 async function send(url, headers, body, def, timeoutMs, maxRetries) {
@@ -97,6 +120,11 @@ async function send(url, headers, body, def, timeoutMs, maxRetries) {
       const responseText = await response.text();
       let data;
       try { data = JSON.parse(responseText); } catch { data = null; }
+      if (response.status === 202 && def.kind === "nvidia-api-catalog") {
+        const requestId = response.headers.get("NVCF-REQID") || data?.requestId || data?.request_id;
+        if (!requestId) throw Object.assign(new Error("NVIDIA async response missing request ID"), { code: "PROVIDER_HTTP_ERROR", status: 202 });
+        return await pollNvidia(requestId, headers, timeoutMs);
+      }
       if (!response.ok) {
         const message = data?.error?.message || data?.message || responseText || `Provider HTTP ${response.status}`;
         const code = classifyProviderError(response.status, message);
@@ -128,7 +156,7 @@ export const PROVIDERS = definitions.map(def => ({
     modelId: def.defaultModel,
     modelEnv: def.modelEnv,
     keyEnv: def.keyEnv,
-    adapterVersion: "1.2.0"
+    adapterVersion: "1.3.0"
   },
   run: args => request(def, args)
 }));
