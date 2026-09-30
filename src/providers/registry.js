@@ -75,7 +75,7 @@ async function send(url, headers, body, def, timeoutMs, maxRetries) {
         lastError = error;
       } else {
         const answer = extractText(data, def.kind);
-        if (!String(answer).trim()) throw Object.assign(new Error("Provider returned no text content (finish_reason=${finish})"), { code: "EMPTY_AI_RESPONSE" });
+        if (!String(answer).trim()) throw Object.assign(new Error("Provider returned no text content"), { code: "EMPTY_AI_RESPONSE" });
         return { raw_answer: answer };
       }
     } catch (error) {
