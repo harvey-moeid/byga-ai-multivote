@@ -4,6 +4,7 @@ import { PROVIDERS } from "../providers/registry.js";
 import { selectProviders } from "./select-providers.js";
 import { parseSignal } from "./normalizer.js";
 import { computeVoting } from "./voting.js";
+import { chooseAdaptivePlan, nextAdaptiveStage, scoreICTSetup } from "./adaptive-routing.js";
 import { saveAnalysis } from "../lib/storage.js";
 import { loadModelSettings, applyModelOverrides } from "../lib/model-settings.js";
 
@@ -32,7 +33,13 @@ export async function runAnalysis(env, logger = () => {}, { models } = {}) {
 
   const timeoutMs = Math.max(1000, number(env.AI_TIMEOUT_MS, 60000));
   const maxRetries = Math.max(0, Math.min(5, number(env.MAX_RETRIES, 1)));
-  const results = await Promise.all(selected.map(async provider => {
+  const ict = prompt?.user ? snapshot?.ict || null : snapshot?.ict || null;
+  const routing = chooseAdaptivePlan(env, selected, { ict, requestedModels: models });
+  const providerMap = new Map(selected.map(p => [p.meta.provider, p]));
+
+  const callProviders = async ids => Promise.all(ids.map(async providerId => {
+    const provider = providerMap.get(providerId);
+    if (!provider) return null;
     const t = Date.now();
     const meta = provider.meta || {};
     try {
@@ -44,9 +51,9 @@ export async function runAnalysis(env, logger = () => {}, { models } = {}) {
         throw Object.assign(new Error("AI response does not contain a valid SIGNAL"), { code: "INVALID_AI_RESPONSE" });
       }
       return { id: crypto.randomUUID(), analysis_id: null, provider: meta.provider || "unknown",
-        provider_label: meta.providerLabel || meta.provider || "Unknown",
-        status: "success", signal: parsed.signal, reason: parsed.reason || "",
-        raw_answer: String(answer), confidence: Number.isFinite(Number(raw?.confidence)) ? Number(raw.confidence) : null,
+        provider_label: meta.providerLabel || meta.provider || "Unknown", status: "success", signal: parsed.signal,
+        reason: parsed.reason || "", raw_answer: String(answer),
+        confidence: Number.isFinite(Number(raw?.confidence)) ? Number(raw.confidence) : null,
         duration_ms: Date.now()-t, error_code: null, error: null,
         adapter_version: String(meta.adapterVersion || "1.0.0"), created_at: nowIso() };
     } catch (err) {
@@ -58,9 +65,26 @@ export async function runAnalysis(env, logger = () => {}, { models } = {}) {
         error: String(err?.message || err).slice(0, 1000),
         adapter_version: String(meta.adapterVersion || "1.0.0"), created_at: nowIso() };
     }
-  }));
+  })).then(x => x.filter(Boolean));
+
+  let results = [];
+  if (routing.gate !== "NO_AI") {
+    const core = routing.stages[0]?.providers || [];
+    results = await callProviders(core);
+    const next = nextAdaptiveStage(routing, results);
+    if (next?.providers?.length) {
+      const extra = await callProviders(next.providers);
+      results.push(...extra);
+    }
+    // Backups are only used if the core produced no valid signal.
+    if (!results.some(r => r.status === "success" && ["BUY", "SELL", "NO_TRADE"].includes(r.signal)) && routing.backups?.length) {
+      const extra = await callProviders(routing.backups);
+      results.push(...extra);
+    }
+  }
 
   const voting = computeVoting(results);
+  const setup = scoreICTSetup(ict || {});
   const createdAt = nowIso();
   const id = `ANL-${createdAt.slice(0,10).replaceAll("-","")}-${createdAt.slice(11,19).replaceAll(":","")}-${crypto.randomUUID().slice(0,4).toUpperCase()}`;
   for (const r of results) r.analysis_id = id;
@@ -81,5 +105,6 @@ export async function runAnalysis(env, logger = () => {}, { models } = {}) {
     last_price: row.last_price, majority_signal: voting.majority_signal,
     voting, results: results.map(({raw_answer, ...r}) => r), duration_ms: row.duration_ms,
     prompt_version: row.prompt_version, market_schema_version: row.market_schema_version,
+    routing: { gate: routing.gate, setup_score: setup.score, reasons: setup.reasons, ai_calls: results.length, stages_used: results.length ? 1 + (results.length > 3 ? 1 : 0) : 0 },
     market: { fallback_used: !!snapshot.fallback_used, cached_snapshot_used: !!snapshot.cached_snapshot_used } };
 }
