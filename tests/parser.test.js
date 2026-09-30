@@ -32,7 +32,12 @@ describe("parseSignal", () => {
     expect(parseSignal(null).signal).toBe("ERROR");
   });
 
-  it("does not infer a signal from prose containing BUY or SELL", () => {\n    expect(parseSignal("I would not BUY here because the structure is weak.").signal).toBe("ERROR");\n    expect(parseSignal("The setup could SELL if support breaks.").signal).toBe("ERROR");\n  });\n\n  it("returns ERROR when no valid signal keyword is present", () => {
+  it("does not infer a signal from prose containing BUY or SELL", () => {
+    expect(parseSignal("I would not BUY here because the structure is weak.").signal).toBe("ERROR");
+    expect(parseSignal("The setup could SELL if support breaks.").signal).toBe("ERROR");
+  });
+
+  it("returns ERROR when no valid signal keyword is present", () => {
     const r = parseSignal("The market looks interesting today, hard to say.");
     expect(r.signal).toBe("ERROR");
   });
