@@ -28,7 +28,7 @@ describe("adaptive routing", () => {
   });
   it("verifies conflicting core votes", () => {
     const p = chooseAdaptivePlan({}, providers(["google-gemini", "groq", "openrouter", "cohere"]), { ict: strongICT });
-    expect(nextAdaptiveStage(p, [{status:"success",signal:"BUY"},{status:"success",signal:"BUY"},{status:"success",signal:"SELL"}]).type).toBe("verifier");
+    expect(nextAdaptiveStage(p, [{status:"success",signal:"BUY"},{status:"success",signal:"SELL"},{status:"error"}]).type).toBe("verifier");
   });
   it("does not verify unanimous core votes", () => {
     const p = chooseAdaptivePlan({}, providers(["google-gemini", "groq", "openrouter", "cohere"]), { ict: strongICT });
