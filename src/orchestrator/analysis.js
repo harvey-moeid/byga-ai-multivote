@@ -1,5 +1,6 @@
 import { getMarketSnapshot } from "../market/provider.js";
 import { buildPrompt, PROMPT_VERSION } from "../prompt/builder.js";
+import { buildICTContext } from "../prompt/ict.js";
 import { PROVIDERS } from "../providers/registry.js";
 import { selectProviders } from "./select-providers.js";
 import { parseSignal } from "./normalizer.js";
@@ -33,7 +34,7 @@ export async function runAnalysis(env, logger = () => {}, { models } = {}) {
 
   const timeoutMs = Math.max(1000, number(env.AI_TIMEOUT_MS, 60000));
   const maxRetries = Math.max(0, Math.min(5, number(env.MAX_RETRIES, 1)));
-  const ict = prompt?.user ? snapshot?.ict || null : snapshot?.ict || null;
+  const ict = buildICTContext({ m5: snapshot.candles || [], m15: snapshot.history_m15 || [], h1: snapshot.history_h1 || [], h4: snapshot.history_h4 || [] });
   const routing = chooseAdaptivePlan(env, selected, { ict, requestedModels: models });
   const providerMap = new Map(selected.map(p => [p.meta.provider, p]));
 
