@@ -48,12 +48,13 @@ function chatMessages({ system, user }) {
 
 export function classifyProviderError(status, message = "") {
   const text = String(message || "").toLowerCase();
+  if (/user location is not supported|location is not supported for the api use|unsupported user location|location.*not supported.*api/.test(text)) return "LOCATION_UNSUPPORTED";
   if (status === 401) return "AUTH_ERROR";
   if (/payment method|credit card|billing|add one at|billing account/.test(text)) return "BILLING_REQUIRED";
   if (status === 403 && /subscription tier|not available in your subscription|plan/.test(text)) return "MODEL_TIER_RESTRICTED";
   if (status === 403) return "AUTH_FORBIDDEN";
   if (status === 429) return "RATE_LIMITED";
-  if (status === 404 || status === 410 || /model(?:\s+id)?\s*(?:not found|does not exist|is unavailable|not available)/i.test(text) || /unknown model|invalid model|model .*not.*found|end of life/i.test(text)) return "MODEL_NOT_FOUND";
+  if (status === 404 || status === 410 || /model(?:\\s+id)?\\s*(?:not found|does not exist|is unavailable|not available)/i.test(text) || /unknown model|invalid model|model .*not.*found|end of life/i.test(text)) return "MODEL_NOT_FOUND";
   if (status >= 500) return "PROVIDER_SERVER_ERROR";
   return "PROVIDER_HTTP_ERROR";
 }
@@ -156,7 +157,7 @@ export const PROVIDERS = definitions.map(def => ({
     modelId: def.defaultModel,
     modelEnv: def.modelEnv,
     keyEnv: def.keyEnv,
-    adapterVersion: "1.3.0"
+    adapterVersion: "1.4.0"
   },
   run: args => request(def, args)
 }));

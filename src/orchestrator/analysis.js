@@ -26,7 +26,6 @@ export async function runAnalysis(env, logger = () => {}, { models } = {}) {
     db: env.DB, env
   });
   const prompt = buildPrompt(snapshot, null);
-  // Per-provider overrides (model id + enabled flag) saved from the dashboard.
   const settings = await loadModelSettings(env.DB);
   const selected = selectProviders(PROVIDERS, models).filter(p => settings[p.meta.provider]?.enabled !== false);
   if (!selected.length) throw new Error("No AI providers are enabled");
@@ -58,12 +57,13 @@ export async function runAnalysis(env, logger = () => {}, { models } = {}) {
         duration_ms: Date.now()-t, error_code: null, error: null,
         adapter_version: String(meta.adapterVersion || "1.0.0"), created_at: nowIso() };
     } catch (err) {
+      const locationUnsupported = String(err?.code || "") === "LOCATION_UNSUPPORTED";
       return { id: crypto.randomUUID(), analysis_id: null, provider: meta.provider || "unknown",
         provider_label: meta.providerLabel || meta.provider || "Unknown",
-        status: err?.name === "TimeoutError" ? "timeout" : "error", signal: null, reason: "",
+        status: locationUnsupported ? "skipped" : (err?.name === "TimeoutError" ? "timeout" : "error"), signal: null, reason: "",
         raw_answer: "", confidence: null, duration_ms: Date.now()-t,
-        error_code: String(err?.code || err?.error_code || "PROVIDER_ERROR"),
-        error: String(err?.message || err).slice(0, 1000),
+        error_code: locationUnsupported ? "LOCATION_UNSUPPORTED" : String(err?.code || err?.error_code || "PROVIDER_ERROR"),
+        error: locationUnsupported ? "Gemini API rejected the server egress location; provider skipped for this run." : String(err?.message || err).slice(0, 1000),
         adapter_version: String(meta.adapterVersion || "1.0.0"), created_at: nowIso() };
     }
   })).then(x => x.filter(Boolean));
@@ -77,7 +77,6 @@ export async function runAnalysis(env, logger = () => {}, { models } = {}) {
       const extra = await callProviders(next.providers);
       results.push(...extra);
     }
-    // Backups are only used if the core produced no valid signal.
     if (!results.some(r => r.status === "success" && ["BUY", "SELL", "NO_TRADE"].includes(r.signal)) && routing.backups?.length) {
       const extra = await callProviders(routing.backups);
       results.push(...extra);
