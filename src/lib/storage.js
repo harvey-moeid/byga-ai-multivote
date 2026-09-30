@@ -1,23 +1,62 @@
-export async function getLatestAnalysisTimestamp(db){const stmt=db?.prepare?.("SELECT created_at FROM analyses ORDER BY created_at DESC LIMIT 1");if(!stmt)return null;const r=await stmt.first();return r?.created_at??null}
-export async function cleanupOldAnalyses(){return undefined}
+const SIGNALS = ["BUY", "SELL", "NO_TRADE"];
+const clampInt = (v, min, max, fallback) => {
+  const n = Number.parseInt(v, 10);
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+};
 
-/**
- * PLACEHOLDER - not yet implemented. Added only so `functions/api/history.js`
- * resolves at build time; currently always returns an empty page. Needs a
- * real query against the `analyses` table (id, created_at, signal, ...),
- * respecting limit/offset/signal filter, once src/orchestrator/analysis.js
- * is implemented and actually writes rows to save against.
- */
-export async function listAnalyses(db, { limit = 50, offset = 0, signal = null } = {}) {
-  return [];
+export async function getLatestAnalysisTimestamp(db) {
+  if (!db?.prepare) throw new Error("D1 binding DB is not configured");
+  const r = await db.prepare("SELECT created_at FROM analyses ORDER BY created_at DESC LIMIT 1").first();
+  return r?.created_at ?? null;
 }
 
-/**
- * PLACEHOLDER - not yet implemented. Added only so
- * `functions/api/analysis/[id].js` resolves at build time; currently always
- * returns null (404). Needs a real query joining `analyses` +
- * `analysis_results` for the given id once analyses are actually saved.
- */
+export async function saveAnalysis(db, analysis, results = []) {
+  if (!db?.prepare || !db?.batch) throw new Error("D1 binding DB does not support writes");
+  const a = analysis;
+  const statements = [db.prepare(`INSERT INTO analyses
+    (id,created_at,exchange,symbol,market_type,timeframe,market_snapshot,prompt_version,market_schema_version,majority_signal,buy_votes,sell_votes,no_trade_votes,success_count,error_count,total_models,duration_ms,last_price,price_change_pct_24h)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
+      a.id,a.created_at,a.exchange,a.symbol,a.market_type,a.timeframe,a.market_snapshot,
+      a.prompt_version,a.market_schema_version,a.majority_signal,a.buy_votes,a.sell_votes,
+      a.no_trade_votes,a.success_count,a.error_count,a.total_models,a.duration_ms,
+      a.last_price,a.price_change_pct_24h
+    )];
+  for (const r of results) statements.push(db.prepare(`INSERT INTO analysis_results
+    (id,analysis_id,provider,provider_label,status,signal,reason,raw_answer,confidence,duration_ms,error_code,error,adapter_version,created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
+      r.id,r.analysis_id,r.provider,r.provider_label,r.status,r.signal,r.reason,r.raw_answer,
+      r.confidence,r.duration_ms,r.error_code,r.error,r.adapter_version,r.created_at
+    ));
+  await db.batch(statements);
+  return a;
+}
+
+export async function cleanupOldAnalyses(db, days = 365) {
+  if (!db?.prepare) throw new Error("D1 binding DB is not configured");
+  const retention = clampInt(days, 1, 36500, 365);
+  const cutoff = new Date(Date.now() - retention * 86400000).toISOString();
+  const result = await db.prepare("DELETE FROM analyses WHERE created_at < ?").bind(cutoff).run();
+  return { deleted: Number(result?.meta?.changes ?? 0), cutoff };
+}
+
+export async function listAnalyses(db, { limit = 50, offset = 0, signal = null } = {}) {
+  if (!db?.prepare) throw new Error("D1 binding DB is not configured");
+  const n = clampInt(limit, 1, 200, 50), o = clampInt(offset, 0, 100000000, 0);
+  const valid = SIGNALS.includes(String(signal || "").toUpperCase()) ? String(signal).toUpperCase() : null;
+  const query = valid
+    ? db.prepare("SELECT id,created_at,exchange,symbol,market_type,timeframe,majority_signal,buy_votes,sell_votes,no_trade_votes,success_count,error_count,total_models,duration_ms,last_price,price_change_pct_24h FROM analyses WHERE majority_signal = ? ORDER BY created_at DESC LIMIT ? OFFSET ?").bind(valid,n,o)
+    : db.prepare("SELECT id,created_at,exchange,symbol,market_type,timeframe,majority_signal,buy_votes,sell_votes,no_trade_votes,success_count,error_count,total_models,duration_ms,last_price,price_change_pct_24h FROM analyses ORDER BY created_at DESC LIMIT ? OFFSET ?").bind(n,o);
+  return (await query.all()).results || [];
+}
+
 export async function getAnalysisDetail(db, id) {
-  return null;
+  if (!db?.prepare) throw new Error("D1 binding DB is not configured");
+  if (typeof id !== "string" || !id.trim()) return null;
+  const analysis = await db.prepare("SELECT * FROM analyses WHERE id = ?").bind(id).first();
+  if (!analysis) return null;
+  const results = await db.prepare("SELECT id,analysis_id,provider,provider_label,status,signal,reason,raw_answer,confidence,duration_ms,error_code,error,adapter_version,created_at FROM analysis_results WHERE analysis_id = ? ORDER BY rowid ASC").bind(id).all();
+  return { ...analysis, market_snapshot: safeJson(analysis.market_snapshot), results: results.results || [] };
+}
+function safeJson(value) {
+  try { return JSON.parse(value); } catch { return null; }
 }
