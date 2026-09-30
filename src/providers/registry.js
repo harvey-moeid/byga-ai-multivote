@@ -71,7 +71,7 @@ async function request(def, { env, prompt, timeoutMs = 60000, maxRetries = 1 }) 
     const url = endpoint.replace("{model}", encodeURIComponent(model)) + "?key=" + encodeURIComponent(apiKey);
     const body = {
       contents: [{ role: "user", parts: [{ text: p.user }] }],
-      generationConfig: { maxOutputTokens: 512 }
+      generationConfig: { maxOutputTokens: 128 }
     };
     if (p.system) body.systemInstruction = { parts: [{ text: p.system }] };
     return send(url, { "content-type": "application/json" }, body, def, timeoutMs, maxRetries);
@@ -80,7 +80,7 @@ async function request(def, { env, prompt, timeoutMs = 60000, maxRetries = 1 }) 
   return send(
     endpoint,
     { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-    { model, messages: chatMessages(p), temperature: 0.2, max_tokens: def.kind === "nvidia-api-catalog" ? 768 : 512, ...(def.kind === "nvidia-api-catalog" ? { reasoning_effort: "low", stream: false } : {}) },
+    { model, messages: chatMessages(p), temperature: 0.2, max_tokens: def.kind === "nvidia-api-catalog" ? 768 : 128, ...(def.kind === "nvidia-api-catalog" ? { reasoning_effort: "low", stream: false } : {}), ...(def.kind === "cohere" ? { thinking: { type: "disabled" } } : {}) },
     def,
     timeoutMs,
     maxRetries
