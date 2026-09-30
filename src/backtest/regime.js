@@ -1,0 +1,1 @@
+export function classifyRegime(candles=[]){if(candles.length<200)return candles.length>0?"RANGE":"UNKNOWN";const first=candles[0].close,last=candles[candles.length-1].close;const change=(last-first)/first;if(change>.2)return"TREND_UP";if(change<-.2)return"TREND_DOWN";return"RANGE"}

@@ -1,0 +1,2 @@
+export async function getLatestAnalysisTimestamp(db){const r=await db?.prepare?.("SELECT created_at FROM analyses ORDER BY created_at DESC LIMIT 1")?.first?.();return r?.created_at??null}
+export async function cleanupOldAnalyses(){return undefined}

@@ -1,0 +1,1 @@
+export function selectProviders(all,requested){if(!Array.isArray(requested)||requested.length===0)return all;if(typeof requested==="string")return all;const set=new Set(requested.filter(x=>typeof x==="string"));const selected=all.filter(p=>set.has(p.meta.provider));return selected.length?selected:all}

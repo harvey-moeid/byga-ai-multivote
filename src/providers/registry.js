@@ -1,0 +1,1 @@
+const names=["google-gemini","groq","openrouter","mistral-ai","hugging-face","cohere","nvidia-api-catalog","sambanova-cloud","vercel-ai-gateway"];export const PROVIDERS=names.map(provider=>({meta:{provider,providerLabel:provider,modelId:provider}}))
