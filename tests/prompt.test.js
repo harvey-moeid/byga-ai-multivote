@@ -75,7 +75,7 @@ describe("buildPrompt current_m5 capping", () => {
   });
 
   it("bumps PROMPT_VERSION to reflect derivatives and the realized track record", () => {
-    expect(PROMPT_VERSION).toBe("1.11.0");
+    expect(PROMPT_VERSION).toBe("1.12.0");
   });
 });
 

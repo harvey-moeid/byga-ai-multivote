@@ -49,7 +49,7 @@ function extractMarketData(user) {
 
 describe("buildPrompt ICT integration", () => {
   it("bumps prompt version", () => {
-    expect(PROMPT_VERSION).toBe("1.11.0");
+    expect(PROMPT_VERSION).toBe("1.12.0");
   });
 
   it("includes canonical ICT context for every analysis", () => {

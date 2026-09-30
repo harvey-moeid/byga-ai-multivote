@@ -12,7 +12,17 @@ const definitions = [
 
 function extractText(data, kind) {
   if (kind === "gemini") return (data?.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("\n");
-  if (kind === "cohere") { const content = data?.message?.content; if (Array.isArray(content)) return content.filter(p => p?.type === "text" || p?.text).map(p => p.text || "").join("\n"); if (typeof content === "string") return content; return data?.message?.text || ""; }
+  if (kind === "cohere") {
+    const content = data?.message?.content;
+    if (Array.isArray(content)) {
+      return content
+        .filter(part => part?.type === "text" || typeof part?.text === "string")
+        .map(part => part.text || "")
+        .join("\n");
+    }
+    if (typeof content === "string") return content;
+    return data?.message?.text || "";
+  }
   return data?.choices?.[0]?.message?.content ?? data?.choices?.[0]?.text ?? "";
 }
 
@@ -30,11 +40,15 @@ function chatMessages({ system, user }) {
 
 export function classifyProviderError(status, message = "") {
   const text = String(message || "").toLowerCase();
+
   if (status === 401) return "AUTH_ERROR";
-  if (/payment method|credit card|billing|add one at|billing account/i.test(text)) return "BILLING_REQUIRED";\n  if (status === 403 && /subscription tier|not available in your subscription|plan/i.test(text)) return "MODEL_TIER_RESTRICTED";\n  if (status === 403) return "AUTH_FORBIDDEN";
+  if (/payment method|credit card|billing|add one at|billing account/.test(text)) return "BILLING_REQUIRED";
+  if (status === 403 && /subscription tier|not available in your subscription|plan/.test(text)) return "MODEL_TIER_RESTRICTED";
+  if (status === 403) return "AUTH_FORBIDDEN";
   if (status === 429) return "RATE_LIMITED";
   if (
-    status === 404 ||\n    status === 410 ||
+    status === 404 ||
+    status === 410 ||
     /model(?:\s+id)?\s*(?:not found|does not exist|is unavailable|not available)/i.test(text) ||
     /unknown model|invalid model|model .*not.*found|end of life/i.test(text)
   ) return "MODEL_NOT_FOUND";
@@ -45,50 +59,104 @@ export function classifyProviderError(status, message = "") {
 async function request(def, { env, prompt, timeoutMs = 60000, maxRetries = 1 }) {
   const apiKey = env?.[def.keyEnv];
   if (!apiKey) throw Object.assign(new Error(`Missing secret ${def.keyEnv}`), { code: "MISSING_API_KEY" });
+
   const model = String(env?.[def.modelEnv] || def.defaultModel);
   const endpoint = def.endpointEnv ? String(env?.[def.endpointEnv] || def.endpoint) : def.endpoint;
   const p = splitPrompt(prompt);
+
   if (def.kind === "gemini") {
     const url = endpoint.replace("{model}", encodeURIComponent(model)) + "?key=" + encodeURIComponent(apiKey);
-    const body = { contents: [{ role: "user", parts: [{ text: p.user }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 2048 } };
+    const body = {
+      contents: [{ role: "user", parts: [{ text: p.user }] }],
+      generationConfig: { maxOutputTokens: 2048 }
+    };
     if (p.system) body.systemInstruction = { parts: [{ text: p.system }] };
     return send(url, { "content-type": "application/json" }, body, def, timeoutMs, maxRetries);
   }
-  return send(endpoint, { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, { model, messages: chatMessages(p), temperature: 0.2, max_tokens: 2048 }, def, timeoutMs, maxRetries);
+
+  return send(
+    endpoint,
+    { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+    { model, messages: chatMessages(p), temperature: 0.2, max_tokens: 2048 },
+    def,
+    timeoutMs,
+    maxRetries
+  );
 }
 
 async function send(url, headers, body, def, timeoutMs, maxRetries) {
   let lastError;
+
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+
     try {
-      const response = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: controller.signal });
-      const text = await response.text();
+      const response = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+
+      const responseText = await response.text();
       let data;
-      try { data = JSON.parse(text); } catch { data = null; }
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        data = null;
+      }
+
       if (!response.ok) {
-        const message = data?.error?.message || data?.message || text || `Provider HTTP ${response.status}`;
+        const message = data?.error?.message || data?.message || responseText || `Provider HTTP ${response.status}`;
         const code = classifyProviderError(response.status, message);
-        const error = Object.assign(new Error(String(message).slice(0, 500)), { code, status: response.status });
+        const error = Object.assign(new Error(String(message).slice(0, 1000)), {
+          code,
+          status: response.status
+        });
+
         if (response.status < 500 && response.status !== 429) throw error;
         lastError = error;
       } else {
         const answer = extractText(data, def.kind);
-        if (!String(answer).trim()) throw Object.assign(new Error("Provider returned no text content"), { code: "EMPTY_AI_RESPONSE" });
+        if (!String(answer).trim()) {
+          throw Object.assign(new Error("Provider returned no text content"), {
+            code: "EMPTY_AI_RESPONSE"
+          });
+        }
         return { raw_answer: answer };
       }
     } catch (error) {
-      if (error?.name === "AbortError") lastError = Object.assign(new Error("AI provider request timed out"), { name: "TimeoutError", code: "AI_TIMEOUT" });
-      else lastError = error;
+      if (error?.name === "AbortError") {
+        lastError = Object.assign(new Error("AI provider request timed out"), {
+          name: "TimeoutError",
+          code: "AI_TIMEOUT"
+        });
+      } else {
+        lastError = error;
+      }
+
       if (error?.status && error.status < 500 && error.status !== 429) throw error;
-    } finally { clearTimeout(timer); }
-    if (attempt < maxRetries) await new Promise(resolve => setTimeout(resolve, Math.min(500 * 2 ** attempt, 2000)));
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (attempt < maxRetries) {
+      await new Promise(resolve => setTimeout(resolve, Math.min(500 * 2 ** attempt, 2000)));
+    }
   }
+
   throw lastError || new Error("AI provider request failed");
 }
 
 export const PROVIDERS = definitions.map(def => ({
-  meta: { provider: def.provider, providerLabel: def.providerLabel, modelId: def.defaultModel, modelEnv: def.modelEnv, keyEnv: def.keyEnv, adapterVersion: "1.0.0" },
+  meta: {
+    provider: def.provider,
+    providerLabel: def.providerLabel,
+    modelId: def.defaultModel,
+    modelEnv: def.modelEnv,
+    keyEnv: def.keyEnv,
+    adapterVersion: "1.1.0"
+  },
   run: args => request(def, args)
 }));

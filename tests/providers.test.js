@@ -19,6 +19,6 @@ describe("external AI provider registry", () => {
     expect(classifyProviderError(429, "Too many requests")).toBe("RATE_LIMITED");
     expect(classifyProviderError(404, "model not found")).toBe("MODEL_NOT_FOUND");
     expect(classifyProviderError(400, "The model does not exist")).toBe("MODEL_NOT_FOUND");
-    expect(classifyProviderError(500, "upstream failure")).toBe("PROVIDER_SERVER_ERROR");
+    expect(classifyProviderError(500, "upstream failure")).toBe("PROVIDER_SERVER_ERROR");\n    expect(classifyProviderError(410, "model reached end of life")).toBe("MODEL_NOT_FOUND");\n    expect(classifyProviderError(403, "This model is not available in your subscription tier")).toBe("MODEL_TIER_RESTRICTED");\n    expect(classifyProviderError(402, "A payment method is required")).toBe("BILLING_REQUIRED");
   });
 });
