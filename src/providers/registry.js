@@ -157,7 +157,7 @@ export const PROVIDERS = definitions.map(def => ({
     modelId: def.defaultModel,
     modelEnv: def.modelEnv,
     keyEnv: def.keyEnv,
-    adapterVersion: "1.4.0"
+    adapterVersion: "1.3.1"
   },
   run: args => request(def, args)
 }));

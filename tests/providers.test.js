@@ -23,5 +23,6 @@ describe("external AI provider registry", () => {
     expect(classifyProviderError(410, "model reached end of life")).toBe("MODEL_NOT_FOUND");
     expect(classifyProviderError(403, "This model is not available in your subscription tier")).toBe("MODEL_TIER_RESTRICTED");
     expect(classifyProviderError(402, "A payment method is required")).toBe("BILLING_REQUIRED");
+    expect(classifyProviderError(400, "User location is not supported for the API use.")).toBe("LOCATION_UNSUPPORTED");
   });
 });
