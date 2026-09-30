@@ -26,16 +26,19 @@ SYMBOL = "BTCUSDT"
 MARKET_TYPE = "perpetual"
 TIMEFRAME = "5m"
 # External AI provider model defaults. API keys are secrets; do NOT put them here.
+# One model family per provider so the votes stay independent:
+#   Gemini, OpenAI gpt-oss, Kimi K2, Mistral Large, Qwen3, Cohere Command,
+#   Llama 3.3, DeepSeek V3.1, Grok.
 GEMINI_MODEL = "gemini-2.5-flash"
 GROQ_MODEL = "openai/gpt-oss-120b"
-OPENROUTER_MODEL = "openai/gpt-oss-120b"
+OPENROUTER_MODEL = "moonshotai/kimi-k2"
 MISTRAL_MODEL = "mistral-large-latest"
-HF_MODEL = "openai/gpt-oss-120b:fastest"
+HF_MODEL = "Qwen/Qwen3-235B-A22B-Instruct-2507:fastest"
 COHERE_MODEL = "command-a-plus-05-2026"
-NVIDIA_MODEL = "openai/gpt-oss-120b"
+NVIDIA_MODEL = "meta/llama-3.3-70b-instruct"
 SAMBANOVA_MODEL = "DeepSeek-V3.1"
 SAMBANOVA_BASE_URL = "https://api.sambanova.ai/v1/chat/completions"
-AI_GATEWAY_MODEL = "openai/gpt-oss-120b"
+AI_GATEWAY_MODEL = "xai/grok-4-fast-non-reasoning"
 CANDLE_LIMIT = "150"
 PROMPT_VERSION = "1.10.0"
 MARKET_SCHEMA_VERSION = "1.3.0"
