@@ -16,19 +16,33 @@ function extractText(data, kind) {
   return data?.choices?.[0]?.message?.content ?? data?.choices?.[0]?.text ?? "";
 }
 
+// buildPrompt() returns { system, user }; older callers may pass a plain string.
+function splitPrompt(prompt) {
+  if (typeof prompt === "string") return { system: "", user: prompt };
+  return { system: String(prompt?.system ?? ""), user: String(prompt?.user ?? "") };
+}
+
+function chatMessages({ system, user }) {
+  const messages = [];
+  if (system) messages.push({ role: "system", content: system });
+  messages.push({ role: "user", content: user });
+  return messages;
+}
+
 async function request(def, { env, prompt, timeoutMs = 60000, maxRetries = 1 }) {
   const apiKey = env?.[def.keyEnv];
   if (!apiKey) throw Object.assign(new Error(`Missing secret ${def.keyEnv}`), { code: "MISSING_API_KEY" });
   const model = String(env?.[def.modelEnv] || def.defaultModel);
   const endpoint = def.endpointEnv ? String(env?.[def.endpointEnv] || def.endpoint) : def.endpoint;
+  const p = splitPrompt(prompt);
   if (def.kind === "gemini") {
     const url = endpoint.replace("{model}", encodeURIComponent(model)) + "?key=" + encodeURIComponent(apiKey);
-    return send(url, { "content-type": "application/json" }, { contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 2048 } }, def, timeoutMs, maxRetries);
+    const body = { contents: [{ role: "user", parts: [{ text: p.user }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 2048 } };
+    if (p.system) body.systemInstruction = { parts: [{ text: p.system }] };
+    return send(url, { "content-type": "application/json" }, body, def, timeoutMs, maxRetries);
   }
-  if (def.kind === "cohere") {
-    return send(endpoint, { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, { model, messages: [{ role: "user", content: prompt }], temperature: 0.2, max_tokens: 2048 }, def, timeoutMs, maxRetries);
-  }
-  return send(endpoint, { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, { model, messages: [{ role: "user", content: prompt }], temperature: 0.2, max_tokens: 2048 }, def, timeoutMs, maxRetries);
+  // Cohere v2 and all OpenAI-compatible providers share the same messages format.
+  return send(endpoint, { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, { model, messages: chatMessages(p), temperature: 0.2, max_tokens: 2048 }, def, timeoutMs, maxRetries);
 }
 
 async function send(url, headers, body, def, timeoutMs, maxRetries) {
