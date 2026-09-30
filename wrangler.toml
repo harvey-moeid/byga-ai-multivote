@@ -7,7 +7,7 @@ pages_build_output_dir = "dashboard"
 binding = "DB"
 database_name = "byga-ai-multivote-db"
 # IMPORTANT: this MUST be the ID of the NEW D1 database created with `npm run db:create`.
-database_id = "REPLACE_WITH_NEW_D1_DATABASE_ID"
+database_id = "2c9fc422-93ea-4d21-8c6a-3ec9fa2502ac"
 
 # Two secrets are required for the login gate (functions/_middleware.js)
 # and are NOT set here - secrets don't belong in wrangler.toml. Set them
