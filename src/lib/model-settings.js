@@ -24,13 +24,17 @@ export function sanitizeSettings(input) {
   return out;
 }
 
+// Falls back to {} (all providers enabled, default models) on any failure so a
+// D1 hiccup never blocks analysis. The fallback is silent to callers, so the
+// error is logged here to keep it visible in Cloudflare logs.
 export async function loadModelSettings(db) {
   if (!db) return {};
   try {
     await ensureTable(db);
     const row = await db.prepare("SELECT value FROM app_settings WHERE key = ?").bind(KEY).first();
     return row?.value ? sanitizeSettings(JSON.parse(row.value)) : {};
-  } catch {
+  } catch (error) {
+    console.error("loadModelSettings failed, falling back to defaults:", error?.message || error);
     return {};
   }
 }

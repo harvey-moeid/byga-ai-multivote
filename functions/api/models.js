@@ -28,6 +28,8 @@ export async function onRequestGet({ env }) {
 }
 
 // PUT /api/models  body: { settings: { <provider>: { model?: string, enabled?: boolean } } }
+// NOTE: this is a full replace, not a merge. Providers omitted from `settings`
+// lose their overrides and count as enabled. The dashboard UI always sends every provider.
 export async function onRequestPut({ env, request }) {
   if (!env?.DB) return json(500, { error_code: "NO_DB", error: "D1 binding DB is not configured" });
   if (!String(request.headers.get("content-type") || "").includes("application/json")) {
@@ -44,8 +46,16 @@ export async function onRequestPut({ env, request }) {
     const model = typeof s?.model === "string" ? s.model.trim() : "";
     if (model && !MODEL_RE.test(model)) return json(400, { error_code: "INVALID_MODEL", error: "Nama model tidak valid untuk " + provider });
   }
-  const enabledCount = PROVIDERS.filter(p => input[p.meta.provider]?.enabled !== false).length;
-  if (!enabledCount) return json(400, { error_code: "NO_PROVIDER_ENABLED", error: "Minimal satu model harus aktif." });
+
+  // Design decision: count only providers that are enabled AND have an API key.
+  // Otherwise every enabled provider could be keyless, and each analysis run
+  // would fail with MISSING_API_KEY.
+  const enabledCount = PROVIDERS.filter(
+    p => input[p.meta.provider]?.enabled !== false && Boolean(env[p.meta.keyEnv])
+  ).length;
+  if (!enabledCount) {
+    return json(400, { error_code: "NO_PROVIDER_ENABLED", error: "Minimal satu model aktif yang sudah punya API key." });
+  }
 
   const saved = await saveModelSettings(env.DB, input);
   return json(200, { ok: true, settings: saved });
