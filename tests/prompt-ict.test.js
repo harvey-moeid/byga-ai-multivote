@@ -63,7 +63,7 @@ describe("buildPrompt ICT integration", () => {
     expect(data.ict.hierarchy.alignment).toBeDefined();
     expect(system).toMatch(/deterministic ICT-style multi-timeframe framework/);
     expect(user).toMatch(/ICT CONTRACT/);
-    expect(user).toMatch(/Do not invent an FVG, OB, sweep, BOS, CHOCH, MSS/);
+    expect(user).toMatch(/Do not invent an FVG, OB, sweep, BOS, CHOCH, or MSS/);
   });
 
   it("keeps compact candles while adding ICT context", () => {
