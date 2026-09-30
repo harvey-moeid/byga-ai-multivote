@@ -4,8 +4,8 @@ import { PROVIDERS, classifyProviderError } from "../src/providers/registry.js";
 describe("external AI provider registry", () => {
   it("contains all nine configured providers", () => {
     expect(PROVIDERS.map(p => p.meta.provider)).toEqual([
-      "google-gemini","groq","openrouter","mistral-ai","hugging-face",
-      "cohere","nvidia-api-catalog","sambanova-cloud","vercel-ai-gateway"
+      "google-gemini", "groq", "openrouter", "mistral-ai", "hugging-face",
+      "cohere", "nvidia-api-catalog", "sambanova-cloud", "vercel-ai-gateway"
     ]);
   });
 
@@ -14,7 +14,7 @@ describe("external AI provider registry", () => {
     expect(PROVIDERS.every(p => p.meta.providerLabel && p.meta.modelId)).toBe(true);
   });
 
-  it("classifies provider HTTP failures into actionable error codes", () => {
+  it("classifies provider HTTP failures", () => {
     expect(classifyProviderError(401, "Unauthorized")).toBe("AUTH_ERROR");
     expect(classifyProviderError(429, "Too many requests")).toBe("RATE_LIMITED");
     expect(classifyProviderError(404, "model not found")).toBe("MODEL_NOT_FOUND");

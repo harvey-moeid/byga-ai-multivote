@@ -1,14 +1,13 @@
 import { PROVIDERS } from "../providers/registry.js";
 
-// Allowed characters for a model id, e.g. "Qwen/Qwen3-235B-A22B-Instruct-2507:fastest".
 export const MODEL_RE = /^[A-Za-z0-9._:/@+-]{1,120}$/;
 const KEY = "model_overrides";
-const MODEL_ALIASES = { "gemini-2.5-flash": "gemini-3.8-flash", "meta/llama-3.3-70b-instruct": "openai/gpt-oss-20b" };
+const MODEL_ALIASES = {
+  "gemini-2.5-flash": "gemini-3.8-flash",
+  "meta/llama-3.3-70b-instruct": "openai/gpt-oss-20b",
+  "mistral-large-latest": "mistral-small-latest"
+};
 
-// The app_settings table is created by migrations/0005_app_settings.sql, which CI
-// applies before every deploy. No runtime CREATE TABLE here (it used to run on each request).
-
-// Keeps only known providers, valid model ids, and explicit enabled=false flags.
 export function sanitizeSettings(input) {
   const out = {};
   if (!input || typeof input !== "object") return out;
@@ -24,9 +23,6 @@ export function sanitizeSettings(input) {
   return out;
 }
 
-// Falls back to {} (all providers enabled, default models) on any failure so a
-// D1 hiccup never blocks analysis. The fallback is silent to callers, so the
-// error is logged here to keep it visible in Cloudflare logs.
 export async function loadModelSettings(db) {
   if (!db) return {};
   try {
@@ -44,7 +40,6 @@ export async function saveModelSettings(db, settings) {
   return JSON.parse(value);
 }
 
-// Returns a copy of env where each overridden provider's *_MODEL var is replaced.
 export function applyModelOverrides(env, settings) {
   const out = { ...env };
   for (const p of PROVIDERS) {

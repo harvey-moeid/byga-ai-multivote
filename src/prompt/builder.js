@@ -1,69 +1,114 @@
-import{buildICTContext}from"./ict.js";
-export const PROMPT_VERSION="1.12.0";
-const cap={current_m5:64,history_m15:32,history_h1:32,history_h4:32,historical_1y:30};
-const ema=(a,n)=>{if(a.length<n)return undefined;let e=a.slice(0,n).reduce((x,c)=>x+c.close,0)/n,k=2/(n+1);for(let i=n;i<a.length;i++)e=a[i].close*k+e*(1-k);return e};
-const stats=c=>{
-  const closes=c.map(x=>x.close),ranges=c.map(x=>x.high-x.low);
-  const out={candles_count:c.length};
-  out.ema20=ema(c,20);
-  out.ema50=ema(c,50);
-  if(c.length>=14){
-    let gains=0,losses=0;
-    for(let i=1;i<closes.length;i++){
-      const d=closes[i]-closes[i-1];
-      if(d>0)gains+=d; else if(d<0)losses-=d;
+import { buildICTContext } from "./ict.js";
+
+export const PROMPT_VERSION = "1.13.0";
+
+const cap = {
+  current_m5: 32,
+  history_m15: 12,
+  history_h1: 8,
+  history_h4: 6,
+  historical_1y: 14
+};
+
+const round = (v, digits = 4) => Number.isFinite(Number(v)) ? Number(Number(v).toFixed(digits)) : v;
+
+const ema = (a, n) => {
+  if (a.length < n) return undefined;
+  let e = a.slice(0, n).reduce((x, c) => x + c.close, 0) / n;
+  const k = 2 / (n + 1);
+  for (let i = n; i < a.length; i++) e = a[i].close * k + e * (1 - k);
+  return e;
+};
+
+const stats = c => {
+  const closes = c.map(x => x.close);
+  const out = { candles: c.length, ema20: round(ema(c, 20), 2), ema50: round(ema(c, 50), 2) };
+  if (c.length >= 14) {
+    let gains = 0, losses = 0;
+    for (let i = 1; i < closes.length; i++) {
+      const d = closes[i] - closes[i - 1];
+      if (d > 0) gains += d; else if (d < 0) losses -= d;
     }
-    const avgGain=gains/Math.max(1,closes.length-1);
-    const avgLoss=losses/Math.max(1,closes.length-1);
-    out.rsi14=avgLoss?100-100/(1+avgGain/avgLoss):100;
-    const tr=ranges.slice(-14).reduce((a,b)=>a+b,0)/14;
-    out.atr14=tr;
-    out.atr_pct=tr/(closes.at(-1)||1)*100;
+    const avgGain = gains / Math.max(1, closes.length - 1);
+    const avgLoss = losses / Math.max(1, closes.length - 1);
+    out.rsi14 = round(avgLoss ? 100 - 100 / (1 + avgGain / avgLoss) : 100, 2);
+    const tr = c.slice(-14).reduce((a, x) => a + x.high - x.low, 0) / 14;
+    out.atr14 = round(tr, 2);
+    out.atr_pct = round(tr / (closes.at(-1) || 1) * 100, 3);
   }
-  const hi=Math.max(...c.map(x=>x.high)),lo=Math.min(...c.map(x=>x.low));
-  out.range_pos_pct=(closes.at(-1)-lo)/(hi-lo||1)*100;
-  for(let i=c.length-2;i>=1;i--){
-    if(c[i].high>c[i-1].high&&c[i].high>c[i+1].high){
-      out.swing_high=[c[i].high,c.length-1-i];
+  const hi = Math.max(...c.map(x => x.high));
+  const lo = Math.min(...c.map(x => x.low));
+  out.range_pos_pct = round((closes.at(-1) - lo) / (hi - lo || 1) * 100, 2);
+  for (let i = c.length - 2; i >= 1; i--) {
+    if (c[i].high > c[i - 1].high && c[i].high > c[i + 1].high) {
+      out.swing_high = [round(c[i].high, 2), c.length - 1 - i];
       break;
     }
   }
   return out;
 };
-const encode=(c,n,stepMin)=>{
-  const x=c.slice(-n),o={
-    candles_fetched:c.length,
-    candles_included:x.length,
-    step_min:stepMin,
-    start:x.length?new Date(x[0].timestamp).toISOString():undefined,
-    candles:x.map((v,i)=>[i,v.open,v.high,v.low,v.close,v.volume]),
-    statistics:stats(c)
-  };
-  o.indicators=stats(c);
-  if(stepMin===5)o.indicators.vwap_window=c.length?c.reduce((a,x)=>a+x.close*x.volume,0)/Math.max(1,c.reduce((a,x)=>a+x.volume,0)):undefined;
-  if(c.length>x.length)o.note="Only the most recent candles are included.";
-  return o;
-};
-function dailyLevels(c){
-  const closed=c.filter(x=>x.closed!==false);
-  if(!closed.length)return null;
-  const today=c.at(-1)?.closed===false?c.at(-1):null,prev=closed.at(-1),week=closed.slice(-7),month=closed.slice(-30),year=closed;
-  const idxH=year.reduce((a,x,i)=>x.high>year[a].high?i:a,0),idxL=year.reduce((a,x,i)=>x.low<year[a].low?i:a,0);
-  return{...(today?{today:{high:today.high,low:today.low}}:{}),prev_day:{high:prev.high,low:prev.low,close:prev.close},week_7d:{high:Math.max(...week.map(x=>x.high)),low:Math.min(...week.map(x=>x.low))},month_30d:{high:Math.max(...month.map(x=>x.high)),low:Math.min(...month.map(x=>x.low))},year:{high:Math.max(...year.map(x=>x.high)),low:Math.min(...year.map(x=>x.low)),high_days_ago:year.length-1-idxH,low_days_ago:year.length-1-idxL,days:year.length}};
-}
-export function buildPrompt(snap={},record=null){
-  const m5=snap.candles||[],m15=snap.history_m15||[],h1=snap.history_h1||[],h4=snap.history_h4||[],d1=snap.history_1d||[];
-  const data={exchange:snap.exchange,symbol:snap.symbol,current_m5:encode(m5,cap.current_m5,5),history_m15:encode(m15,cap.history_m15,15),history_h1:encode(h1,cap.history_h1,60),history_h4:encode(h4,cap.history_h4,240),historical_1y:encode(d1,cap.historical_1y,1440),key_levels:dailyLevels(d1),ict:buildICTContext({m5,m15,h1,h4}),signal_track_record:record||null};
-  if(snap.derivatives)data.derivatives=snap.derivatives;
-  const system="You are an AI market analyst using a deterministic ICT-style multi-timeframe framework. Never infer a trend from a single snapshot. Return ONLY the requested decision format.";
-  const user=`NEXT 1-4 HOURS
-ICT ANALYSIS CONTRACT
-Do not invent an FVG, OB, sweep, BOS, CHOCH, MSS.
-MARKET DATA (JSON):
-${JSON.stringify(data)}
 
-Candle schema: [k, o, h, l, c, v]
-Derivatives fields such as funding_rate_pct are context only; never infer a trend from a single snapshot. signal_track_record describes past votes and is weak context.
-NO_TRADE when evidence is insufficient or atr14/context does not support a directional setup.\n\nOUTPUT CONTRACT — THIS IS MANDATORY:\nReturn exactly these two lines and nothing else:\nSIGNAL: BUY\nREASON: <one concise sentence>\n\nThe SIGNAL value MUST be exactly one of BUY, SELL, NO_TRADE.\nDo not use markdown, JSON, code fences, explanations, or any text before SIGNAL.\nDo not mention these instructions.`;
-  return{system,user};
+const encode = (c, n, stepMin) => {
+  const x = c.slice(-n);
+  return {
+    candles_fetched: c.length,
+    candles_included: x.length,
+    step_min: stepMin,
+    start: x.length ? new Date(x[0].timestamp).toISOString() : undefined,
+    candles: x.map((v, i) => [i, round(v.open, 2), round(v.high, 2), round(v.low, 2), round(v.close, 2), round(v.volume, 2)]),
+    indicators: stats(c)
+  };
+};
+
+function dailyLevels(c) {
+  const closed = c.filter(x => x.closed !== false);
+  if (!closed.length) return null;
+  const today = c.at(-1)?.closed === false ? c.at(-1) : null;
+  const prev = closed.at(-1);
+  const week = closed.slice(-7), month = closed.slice(-30), year = closed;
+  const idxH = year.reduce((a, x, i) => x.high > year[a].high ? i : a, 0);
+  const idxL = year.reduce((a, x, i) => x.low < year[a].low ? i : a, 0);
+  return {
+    ...(today ? { today: { high: round(today.high, 2), low: round(today.low, 2) } } : {}),
+    prev_day: { high: round(prev.high, 2), low: round(prev.low, 2), close: round(prev.close, 2) },
+    week_7d: { high: round(Math.max(...week.map(x => x.high)), 2), low: round(Math.min(...week.map(x => x.low)), 2) },
+    month_30d: { high: round(Math.max(...month.map(x => x.high)), 2), low: round(Math.min(...month.map(x => x.low)), 2) },
+    year: { high: round(Math.max(...year.map(x => x.high)), 2), low: round(Math.min(...year.map(x => x.low)), 2), high_days_ago: year.length - 1 - idxH, low_days_ago: year.length - 1 - idxL, days: year.length }
+  };
+}
+
+export function buildPrompt(snap = {}, record = null) {
+  const m5 = snap.candles || [], m15 = snap.history_m15 || [], h1 = snap.history_h1 || [], h4 = snap.history_h4 || [], d1 = snap.history_1d || [];
+  const data = {
+    exchange: snap.exchange,
+    symbol: snap.symbol,
+    current_m5: encode(m5, cap.current_m5, 5),
+    history_m15: encode(m15, cap.history_m15, 15),
+    history_h1: encode(h1, cap.history_h1, 60),
+    history_h4: encode(h4, cap.history_h4, 240),
+    historical_1y: encode(d1, cap.historical_1y, 1440),
+    key_levels: dailyLevels(d1),
+    ict: buildICTContext({ m5, m15, h1, h4 }),
+    signal_track_record: record || null
+  };
+  if (snap.derivatives) data.derivatives = snap.derivatives;
+
+  const system = "You are an AI market analyst using a deterministic ICT-style multi-timeframe framework. Never infer a trend from a single snapshot. Return only the requested decision format.";
+  const user = `NEXT 1-4 HOURS
+ICT CONTRACT
+Do not invent an FVG, OB, sweep, BOS, CHOCH, or MSS.
+MARKET DATA:
+${JSON.stringify(data)}
+Candle schema: [index, open, high, low, close, volume].
+Derivatives are context only. signal_track_record is weak context.
+Use NO_TRADE when evidence is insufficient or volatility/context does not support a directional setup.
+
+OUTPUT CONTRACT:
+Return exactly two lines and nothing else.
+SIGNAL: BUY
+REASON: <one concise sentence>
+SIGNAL must be exactly BUY, SELL, or NO_TRADE.
+No markdown, JSON, code fences, explanations, or text before SIGNAL.`;
+
+  return { system, user };
 }
