@@ -54,7 +54,7 @@ export function classifyProviderError(status, message = "") {
   if (status === 403 && /subscription tier|not available in your subscription|plan/.test(text)) return "MODEL_TIER_RESTRICTED";
   if (status === 403) return "AUTH_FORBIDDEN";
   if (status === 429) return "RATE_LIMITED";
-  if (status === 404 || status === 410 || /model(?:\\s+id)?\\s*(?:not found|does not exist|is unavailable|not available)/i.test(text) || /unknown model|invalid model|model .*not.*found|end of life/i.test(text)) return "MODEL_NOT_FOUND";
+  if (status === 404 || status === 410 || /model(?:\s+id)?\s*(?:not found|does not exist|is unavailable|not available)/i.test(text) || /unknown model|invalid model|model .*not.*found|end of life/i.test(text)) return "MODEL_NOT_FOUND";
   if (status >= 500) return "PROVIDER_SERVER_ERROR";
   return "PROVIDER_HTTP_ERROR";
 }
