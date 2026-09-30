@@ -1,5 +1,5 @@
 import{buildICTContext}from"./ict.js";
-export const PROMPT_VERSION="1.11.0";
+export const PROMPT_VERSION="1.12.0";
 const cap={current_m5:64,history_m15:32,history_h1:32,history_h4:32,historical_1y:30};
 const ema=(a,n)=>{if(a.length<n)return undefined;let e=a.slice(0,n).reduce((x,c)=>x+c.close,0)/n,k=2/(n+1);for(let i=n;i<a.length;i++)e=a[i].close*k+e*(1-k);return e};
 const stats=c=>{
@@ -55,7 +55,7 @@ export function buildPrompt(snap={},record=null){
   const m5=snap.candles||[],m15=snap.history_m15||[],h1=snap.history_h1||[],h4=snap.history_h4||[],d1=snap.history_1d||[];
   const data={exchange:snap.exchange,symbol:snap.symbol,current_m5:encode(m5,cap.current_m5,5),history_m15:encode(m15,cap.history_m15,15),history_h1:encode(h1,cap.history_h1,60),history_h4:encode(h4,cap.history_h4,240),historical_1y:encode(d1,cap.historical_1y,1440),key_levels:dailyLevels(d1),ict:buildICTContext({m5,m15,h1,h4}),signal_track_record:record||null};
   if(snap.derivatives)data.derivatives=snap.derivatives;
-  const system="You are an AI market analyst using a deterministic ICT-style multi-timeframe framework. Never infer a trend from a single snapshot.";
+  const system="You are an AI market analyst using a deterministic ICT-style multi-timeframe framework. Never infer a trend from a single snapshot. Return ONLY the requested decision format.";
   const user=`NEXT 1-4 HOURS
 ICT ANALYSIS CONTRACT
 Do not invent an FVG, OB, sweep, BOS, CHOCH, MSS.
@@ -64,6 +64,6 @@ ${JSON.stringify(data)}
 
 Candle schema: [k, o, h, l, c, v]
 Derivatives fields such as funding_rate_pct are context only; never infer a trend from a single snapshot. signal_track_record describes past votes and is weak context.
-NO_TRADE when evidence is insufficient or atr14/context does not support a directional setup.`;
+NO_TRADE when evidence is insufficient or atr14/context does not support a directional setup.\n\nOUTPUT CONTRACT — THIS IS MANDATORY:\nReturn exactly these two lines and nothing else:\nSIGNAL: BUY\nREASON: <one concise sentence>\n\nThe SIGNAL value MUST be exactly one of BUY, SELL, NO_TRADE.\nDo not use markdown, JSON, code fences, explanations, or any text before SIGNAL.\nDo not mention these instructions.`;
   return{system,user};
 }

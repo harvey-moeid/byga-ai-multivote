@@ -1,15 +1,43 @@
-export function parseSignal(input){
-  const text=String(input??"").replace(/<think>[\s\S]*?<\/think>/gi,"").trim();
-  if(!text)return{signal:"ERROR",reason:""};
+function clean(input) {
+  return String(input ?? "")
+    .replace(/<think>[\\s\\S]*?<\\/think>/gi, "")
+    .replace(/\`\`\`(?:json|text)?/gi, "")
+    .replace(/\`\`\`/g, "")
+    .trim();
+}
 
-  const m=text.match(/^\s*SIGNAL\s*:\s*(BUY|SELL|NO_TRADE)\s*$/im);
-  if(m){
-    const r=text.match(/^\s*REASON\s*:\s*(.+?)(?:\n\s*\n|$)/ims);
-    return{signal:m[1].toUpperCase(),reason:r?.[1]?.trim()||""};
+function fromJson(text) {
+  const candidates = [text];
+  const block = text.match(/\\{[\\s\\S]*?\\}/);
+  if (block) candidates.push(block[0]);
+  for (const candidate of candidates) {
+    try {
+      const obj = JSON.parse(candidate);
+      const signal = String(obj?.signal ?? obj?.SIGNAL ?? "").trim().toUpperCase();
+      if (["BUY", "SELL", "NO_TRADE"].includes(signal)) {
+        return { signal, reason: String(obj?.reason ?? obj?.REASON ?? "").trim() };
+      }
+    } catch {}
+  }
+  return null;
+}
+
+export function parseSignal(input) {
+  const text = clean(input);
+  if (!text) return { signal: "ERROR", reason: "" };
+
+  const json = fromJson(text);
+  if (json) return json;
+
+  const labeled = text.match(/(?:^|[\\n\\r*#>\\s])SIGNAL\\s*(?::|=|-)?\\s*(BUY|SELL|NO[_ -]?TRADE)\\b/i);
+  if (labeled) {
+    const signal = labeled[1].toUpperCase().replace(/[ -]/g, "_");
+    const reason = text.match(/(?:^|[\\n\\r*#>\\s])REASON\\s*(?::|=|-)?\\s*([^\\n]+)/i)?.[1]?.trim() || "";
+    return { signal, reason };
   }
 
-  const loose=text.match(/^\s*(BUY|SELL|NO_TRADE)\b/i);
+  const loose = text.match(/\\b(BUY|SELL|NO[_ -]?TRADE)\\b/i);
   return loose
-    ? {signal:loose[1].toUpperCase(),reason:""}
-    : {signal:"ERROR",reason:""};
+    ? { signal: loose[1].toUpperCase().replace(/[ -]/g, "_"), reason: "" }
+    : { signal: "ERROR", reason: "" };
 }

@@ -1,5 +1,5 @@
 const definitions = [
-  { provider: "google-gemini", providerLabel: "Google Gemini", modelEnv: "GEMINI_MODEL", keyEnv: "GEMINI_API_KEY", endpoint: "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent", kind: "gemini", defaultModel: "gemini-2.5-flash" },
+  { provider: "google-gemini", providerLabel: "Google Gemini", modelEnv: "GEMINI_MODEL", keyEnv: "GEMINI_API_KEY", endpoint: "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent", kind: "gemini", defaultModel: "gemini-3.8-flash" },
   { provider: "groq", providerLabel: "Groq", modelEnv: "GROQ_MODEL", keyEnv: "GROQ_API_KEY", endpoint: "https://api.groq.com/openai/v1/chat/completions", defaultModel: "openai/gpt-oss-120b" },
   { provider: "openrouter", providerLabel: "OpenRouter", modelEnv: "OPENROUTER_MODEL", keyEnv: "OPENROUTER_API_KEY", endpoint: "https://openrouter.ai/api/v1/chat/completions", defaultModel: "openai/gpt-oss-120b" },
   { provider: "mistral-ai", providerLabel: "Mistral AI", modelEnv: "MISTRAL_MODEL", keyEnv: "MISTRAL_API_KEY", endpoint: "https://api.mistral.ai/v1/chat/completions", defaultModel: "mistral-large-latest" },
@@ -12,7 +12,7 @@ const definitions = [
 
 function extractText(data, kind) {
   if (kind === "gemini") return (data?.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("\n");
-  if (kind === "cohere") return (data?.message?.content || []).map(p => p.text || "").join("\n");
+  if (kind === "cohere") { const content = data?.message?.content; if (Array.isArray(content)) return content.filter(p => p?.type === "text" || p?.text).map(p => p.text || "").join("\n"); if (typeof content === "string") return content; return data?.message?.text || ""; }
   return data?.choices?.[0]?.message?.content ?? data?.choices?.[0]?.text ?? "";
 }
 
@@ -31,12 +31,12 @@ function chatMessages({ system, user }) {
 export function classifyProviderError(status, message = "") {
   const text = String(message || "").toLowerCase();
   if (status === 401) return "AUTH_ERROR";
-  if (status === 403) return "AUTH_FORBIDDEN";
+  if (/payment method|credit card|billing|add one at|billing account/i.test(text)) return "BILLING_REQUIRED";\n  if (status === 403 && /subscription tier|not available in your subscription|plan/i.test(text)) return "MODEL_TIER_RESTRICTED";\n  if (status === 403) return "AUTH_FORBIDDEN";
   if (status === 429) return "RATE_LIMITED";
   if (
-    status === 404 ||
+    status === 404 ||\n    status === 410 ||
     /model(?:\s+id)?\s*(?:not found|does not exist|is unavailable|not available)/i.test(text) ||
-    /unknown model|invalid model|model .*not.*found/i.test(text)
+    /unknown model|invalid model|model .*not.*found|end of life/i.test(text)
   ) return "MODEL_NOT_FOUND";
   if (status >= 500) return "PROVIDER_SERVER_ERROR";
   return "PROVIDER_HTTP_ERROR";
@@ -75,7 +75,7 @@ async function send(url, headers, body, def, timeoutMs, maxRetries) {
         lastError = error;
       } else {
         const answer = extractText(data, def.kind);
-        if (!String(answer).trim()) throw Object.assign(new Error("Provider returned an empty response"), { code: "EMPTY_AI_RESPONSE" });
+        if (!String(answer).trim()) throw Object.assign(new Error("Provider returned no text content (finish_reason=${finish})"), { code: "EMPTY_AI_RESPONSE" });
         return { raw_answer: answer };
       }
     } catch (error) {
