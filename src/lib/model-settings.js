@@ -2,7 +2,8 @@ import { PROVIDERS } from "../providers/registry.js";
 
 // Allowed characters for a model id, e.g. "Qwen/Qwen3-235B-A22B-Instruct-2507:fastest".
 export const MODEL_RE = /^[A-Za-z0-9._:/@+-]{1,120}$/;
-const KEY = "model_overrides";\nconst MODEL_ALIASES = { "gemini-2.5-flash": "gemini-3.8-flash", "meta/llama-3.3-70b-instruct": "openai/gpt-oss-20b" };
+const KEY = "model_overrides";
+const MODEL_ALIASES = { "gemini-2.5-flash": "gemini-3.8-flash", "meta/llama-3.3-70b-instruct": "openai/gpt-oss-20b" };
 
 // The app_settings table is created by migrations/0005_app_settings.sql, which CI
 // applies before every deploy. No runtime CREATE TABLE here (it used to run on each request).
