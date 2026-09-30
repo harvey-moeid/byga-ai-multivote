@@ -1,1 +1,12 @@
 import{scoreOutcome}from"../backtest/metrics.js";export function computeModelPerformance(rows=[],marketMap,{horizonsHours=[1],now=Date.now()}={}){const out={};for(const row of rows){for(const r of row.results||[]){if(r.status!=="success")continue;const key=r.provider;if(!out[key])out[key]={by_horizon:{},weighting_ready:{}};const candles=marketMap.get(`${row.exchange}:${row.symbol}`)||[];for(const h of horizonsHours){const eligible=candles.findIndex(c=>c.timestamp>=new Date(row.created_at).getTime());if(eligible<0)continue;const endTs=new Date(row.created_at).getTime()+h*3600000;if(endTs>now)continue;const s=scoreOutcome(r.signal,row.last_price,candles,Math.max(0,eligible),h*3600000);const b=out[key].by_horizon[String(h)] ||= {n:0,hits:0,hit_rate_pct:0};b.n++;if(s.hit)b.hits++;b.hit_rate_pct=Number((b.hits/b.n*100).toFixed(2));out[key].weighting_ready[String(h)]=b.n>=20}}}return out}
+
+/**
+ * PLACEHOLDER - not yet implemented. Added only so
+ * `functions/api/model-performance.js` resolves at build time; currently
+ * always returns an empty result. Needs to load saved analyses + cached
+ * candles from D1 for the given `days` window and feed them into
+ * computeModelPerformance() above, once analyses are actually being saved.
+ */
+export async function getModelPerformance(db, { days = 365 } = {}) {
+  return {};
+}
