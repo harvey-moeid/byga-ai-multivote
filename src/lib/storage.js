@@ -20,7 +20,7 @@ export async function saveAnalysis(db, analysis, results = []) {
       a.prompt_version,a.market_schema_version,a.majority_signal,a.buy_votes,a.sell_votes,
       a.no_trade_votes,a.success_count,a.error_count,a.total_models,a.duration_ms,
       a.last_price,a.price_change_pct_24h
-    ))];
+    )];
 
   for (const r of results) statements.push(db.prepare(`INSERT INTO analysis_results
     (id,analysis_id,provider,provider_label,role,vote_index,vote_group,data_source,status,signal,reason,raw_answer,confidence,duration_ms,error_code,error,adapter_version,created_at)
