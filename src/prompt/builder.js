@@ -91,7 +91,9 @@ export function buildPrompt(snap = {}, record = null) {
     ict: buildICTContext({ m5, m15, h1, h4 }),
     signal_track_record: record || null
   };
-  if (snap.derivatives) data.derivatives = snap.derivatives;
+  // Derivatives (funding rate / open interest / basis) are no longer part of
+  // the prompt — chart_db (now the primary market data source) doesn't carry
+  // them, so the field is dropped entirely rather than only when missing.
 
   const system = "You are an AI market analyst using a deterministic ICT-style multi-timeframe framework. Never infer a trend from a single snapshot. Return only the requested decision format.";
   const user = `NEXT 1-4 HOURS
@@ -100,7 +102,7 @@ Do not invent an FVG, OB, sweep, BOS, CHOCH, or MSS.
 MARKET DATA:
 ${JSON.stringify(data)}
 Candle schema: [index, open, high, low, close, volume].
-Derivatives are context only. signal_track_record is weak context.
+signal_track_record is weak context.
 Use NO_TRADE when evidence is insufficient or volatility/context does not support a directional setup.
 
 OUTPUT CONTRACT:
