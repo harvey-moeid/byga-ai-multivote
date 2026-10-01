@@ -27,15 +27,15 @@ describe("adaptive routing", () => {
     expect(p.verifier).toEqual([]);
   });
   it("uses backups when primary results conflict", () => {
-    const p = chooseAdaptivePlan({}, providers(["google-gemini", "groq", "openrouter", "mistral-ai"]), { ict: strongICT });
+    const p = chooseAdaptivePlan({ AI_BACKUP_PROVIDERS: "mistral-ai" }, providers(["google-gemini", "groq", "openrouter", "mistral-ai"]), { ict: strongICT });
     expect(nextAdaptiveStage(p, [{status:"success",signal:"BUY"},{status:"success",signal:"SELL"},{status:"error"}])).toEqual({type:"fallback",providers:["mistral-ai"]});
   });
   it("does not use backups for unanimous primary votes", () => {
-    const p = chooseAdaptivePlan({}, providers(["google-gemini", "groq", "openrouter", "mistral-ai"]), { ict: strongICT });
+    const p = chooseAdaptivePlan({ AI_BACKUP_PROVIDERS: "mistral-ai" }, providers(["google-gemini", "groq", "openrouter", "mistral-ai"]), { ict: strongICT });
     expect(nextAdaptiveStage(p, [{status:"success",signal:"BUY"},{status:"success",signal:"BUY"},{status:"success",signal:"BUY"}])).toBeNull();
   });
   it("uses backups when all primary requests fail", () => {
-    const p = chooseAdaptivePlan({}, providers(["google-gemini", "groq", "openrouter", "mistral-ai"]), { ict: strongICT });
+    const p = chooseAdaptivePlan({ AI_BACKUP_PROVIDERS: "mistral-ai" }, providers(["google-gemini", "groq", "openrouter", "mistral-ai"]), { ict: strongICT });
     expect(nextAdaptiveStage(p, [{status:"error"},{status:"timeout"},{status:"error"}])).toEqual({type:"fallback",providers:["mistral-ai"]});
   });
 });
