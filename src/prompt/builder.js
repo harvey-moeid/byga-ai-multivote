@@ -118,7 +118,7 @@ export function buildPrompt(snap = {}, record = null, { role = "AI_A", voteIndex
     exchange: snap.exchange,
     symbol: snap.symbol,
     current_m5: encode(m5, cap.current_m5, 5),
-    history_m15: encode(m15, cap.history_m15, 12),
+    history_m15: encode(m15, cap.history_m15, 15),
     history_h1: encode(h1, cap.history_h1, 60),
     history_h4: encode(h4, cap.history_h4, 240),
     historical_1y: encode(d1, cap.historical_1y, 1440),
@@ -127,9 +127,10 @@ export function buildPrompt(snap = {}, record = null, { role = "AI_A", voteIndex
     signal_track_record: record || null
   };
 
-  const system = `You are ${role}, one of exactly two independent AI analysts. All market data and ICT confluence come from chart_db. Evaluate the supplied multi-timeframe confluence independently. Never invent an FVG, OB, sweep, BOS, CHOCH, or MSS.`;
+  const system = `You are ${role}, one of exactly two independent AI analysts using a deterministic ICT-style multi-timeframe framework. All market data and ICT confluence come from chart_db. Evaluate the supplied multi-timeframe confluence independently. Never invent an FVG, OB, sweep, BOS, CHOCH, or MSS.`;
   const user = `NEXT 1-4 HOURS
 VOTE SLOT: ${role} / VOTE ${voteIndex}
+ICT CONTRACT
 DATA SOURCE: chart_db
 Use the chart_db confluence block as the primary confluence summary, then verify it against the candle data.
 
