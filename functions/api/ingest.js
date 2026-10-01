@@ -1,22 +1,23 @@
 /**
  * POST /api/ingest
  *
- * Receives a fresh ticker+candle snapshot pushed by the GitHub Actions
- * cron (.github/workflows/refresh-live-ticker.yml, every ~5 minutes) and
- * writes it into the D1 `live_ticker` table (migrations/0004_live_ticker.sql).
+ * Writes a ticker+candle snapshot into the D1 `live_ticker` table
+ * (migrations/0004_live_ticker.sql), read by src/market/provider.js as the
+ * last-resort fallback when chart_db and the live exchange chain (Binance /
+ * Bybit / OKX) have all failed or returned stale data.
  *
- * src/market/provider.js reads this cached snapshot as a last-resort
- * fallback when a *live* fetch to both Binance and Bybit fails - which in
- * practice usually means both exchanges returned HTTP 403, because their
- * WAFs block Cloudflare's own IP ranges (the ones Pages Functions run
- * from). The cron runs on GitHub's runner IPs instead, which aren't
- * affected by that block. See docs/LIVE_TICKER_CACHE.md.
+ * NOTE: nothing currently calls this endpoint. It was built for a GitHub
+ * Actions cron (pushing every ~5 minutes from GitHub's runner IPs, which
+ * aren't affected by exchange WAFs blocking Cloudflare's own IP ranges),
+ * but that workflow was never actually implemented/committed. The endpoint
+ * and its auth are left in place and ready to use if that cron gets added.
  *
  * Not covered by the cookie login gate (see functions/_middleware.js
- * PUBLIC_PATHS) since the cron has no browser session - it authenticates
+ * PUBLIC_PATHS) since a cron has no browser session - it would authenticate
  * with the x-ingest-secret header (env.INGEST_SECRET) instead. Set this
  * secret with `wrangler pages secret put INGEST_SECRET` and put the same
- * value in the GitHub repo's INGEST_SECRET Actions secret.
+ * value in the GitHub repo's INGEST_SECRET Actions secret if/when a pusher
+ * is implemented.
  */
 
 import { saveLiveSnapshot } from "../../src/market/liveSnapshotStore.js";

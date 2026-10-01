@@ -1,10 +1,13 @@
 /**
  * D1 cache for the current-timeframe ticker+candle snapshot.
  *
- * Populated by the GitHub Actions cron (.github/workflows/refresh-live-ticker.yml)
- * via POST /api/ingest (functions/api/ingest.js), and read here as a
- * fallback when a live fetch to both Binance and Bybit fails (e.g. HTTP 403
- * from Cloudflare's own IP ranges). See docs/LIVE_TICKER_CACHE.md.
+ * Written via POST /api/ingest (functions/api/ingest.js). NOTE: as of now,
+ * nothing actually calls that endpoint — the GitHub Actions cron that was
+ * meant to push snapshots here on a schedule was never implemented, so this
+ * table stays empty and getLiveSnapshot() below never returns a row. The
+ * read path is kept as the last-resort fallback in src/market/provider.js
+ * (after chart_db and the live exchange chain both fail) in case a pusher
+ * is added later — see that file for the current fallback order.
  */
 
 export async function saveLiveSnapshot(
