@@ -110,7 +110,8 @@ export async function runAnalysis(env, logger = () => {}, { models } = {}) {
     Array.from({ length: votes }, (_, i) => ({ role, providerId, voteIndex: i + 1 }))
   );
 
-  // Four independent calls: AI_A vote 1+2 and AI_B vote 1+2.
+  // One independent call per vote slot, across every selected provider
+  // (6 providers x votes_per_provider each, by default 12 calls total).
   const results = routing.gate === "AI" ? await Promise.all(slots.map(callVote)) : [];
   const cleanResults = results.filter(Boolean);
   const voting = computeVoting(cleanResults);
@@ -151,11 +152,10 @@ export async function runAnalysis(env, logger = () => {}, { models } = {}) {
       data_source: "chart_db",
       setup_score: setup.score,
       reasons: setup.reasons,
-      ai_a: roles[0] || null,
-      ai_b: roles[1] || null,
+      providers: roles,
       ai_calls: cleanResults.length,
       total_vote_slots: routing.total_vote_slots,
-      expected_vote_slots: 4
+      expected_vote_slots: routing.total_vote_slots
     },
     market: {
       data_source: snapshot.market_data_source || "chart_db",

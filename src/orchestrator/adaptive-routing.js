@@ -1,5 +1,13 @@
-const DEFAULT_AI_A = "google-gemini";
-const DEFAULT_AI_B = "groq";
+const PROVIDER_COUNT = 6;
+const DEFAULT_PROVIDERS = [
+  "google-gemini",
+  "groq",
+  "openrouter",
+  "mistral-ai",
+  "hugging-face",
+  "cohere"
+];
+const ROLE_LABELS = ["AI_A", "AI_B", "AI_C", "AI_D", "AI_E", "AI_F"];
 
 const unique = values => [...new Set((values || []).filter(Boolean))];
 
@@ -36,29 +44,42 @@ export function scoreICTSetup(ict = {}) {
   };
 }
 
+// Picks PROVIDER_COUNT distinct providers for one analysis task. Each role
+// (AI_A .. AI_F) can be pinned to a specific provider via an
+// <ROLE>_PROVIDER env var (e.g. AI_C_PROVIDER=cohere); unset roles fall
+// back to DEFAULT_PROVIDERS by position, and any still-missing slots are
+// filled from whatever else is available so a task never silently runs
+// with fewer than PROVIDER_COUNT voters as long as enough providers exist.
 export function chooseAdaptivePlan(env, providers, { requestedModels } = {}) {
   const available = new Set((providers || []).map(p => p?.meta?.provider).filter(Boolean));
   const requested = Array.isArray(requestedModels) ? requestedModels.filter(x => available.has(x)) : [];
-  const configuredA = String(env?.AI_A_PROVIDER || DEFAULT_AI_A);
-  const configuredB = String(env?.AI_B_PROVIDER || DEFAULT_AI_B);
-  const aiA = available.has(configuredA) ? configuredA : [...available][0];
-  const aiB = available.has(configuredB) && configuredB !== aiA
-    ? configuredB
-    : [...available].find(id => id !== aiA);
 
-  const selected = requested.length >= 2
-    ? requested.slice(0, 2)
-    : unique([aiA, aiB]).filter(Boolean).slice(0, 2);
+  const configured = ROLE_LABELS.map((role, i) => String(env?.[`${role}_PROVIDER`] || DEFAULT_PROVIDERS[i] || ""));
+
+  const chosen = [];
+  for (const id of configured) {
+    if (id && available.has(id) && !chosen.includes(id)) chosen.push(id);
+  }
+  if (chosen.length < PROVIDER_COUNT) {
+    for (const id of available) {
+      if (chosen.length >= PROVIDER_COUNT) break;
+      if (!chosen.includes(id)) chosen.push(id);
+    }
+  }
+
+  const selected = requested.length >= PROVIDER_COUNT
+    ? requested.slice(0, PROVIDER_COUNT)
+    : unique(chosen).slice(0, PROVIDER_COUNT);
 
   const votesPerAI = envInt(env, "AI_VOTES_PER_PROVIDER", 2, 2, 2);
   const roles = selected.map((providerId, i) => ({
-    role: i === 0 ? "AI_A" : "AI_B",
+    role: ROLE_LABELS[i] || `AI_${i + 1}`,
     providerId,
     votes: votesPerAI
   }));
 
   return {
-    gate: roles.length === 2 ? "AI" : "NO_AI",
+    gate: roles.length === PROVIDER_COUNT ? "AI" : "NO_AI",
     data_source: "chart_db",
     voter_count: roles.length,
     votes_per_provider: votesPerAI,
@@ -73,7 +94,7 @@ export function nextAdaptiveStage() {
 }
 
 export const ROUTING_DEFAULTS = {
-  ai_a: DEFAULT_AI_A,
-  ai_b: DEFAULT_AI_B,
+  providers: DEFAULT_PROVIDERS,
+  provider_count: PROVIDER_COUNT,
   votes_per_provider: 2
 };
