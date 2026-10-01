@@ -27,8 +27,6 @@ jobs:
   deploy:
     name: Deploy to Cloudflare Pages
     needs: test
-    # Deploy jalan untuk push ke main DAN run manual (workflow_dispatch) dari main,
-    # supaya bisa redeploy tanpa commit baru (mis. setelah mengganti secret).
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
@@ -51,19 +49,24 @@ jobs:
       - name: Ensure Cloudflare Pages project exists
         run: npx wrangler pages project create byga-ai-multivote --production-branch=main || true
 
-      # Semua migration dijalankan urut nama file (0001, 0002, 0003, ...).
-      # Aman dijalankan berulang karena setiap file memakai CREATE ... IF NOT EXISTS.
-      # Jangan tambah migration yang tidak idempoten tanpa mengubah langkah ini.
+      # Semua migration dijalankan urut nama file.
+      # Migration 0006 pernah terpasang sebagian/penuh pada remote DB sebelum
+      # workflow diulang, sehingga dicek dulu agar ALTER TABLE tidak duplikat.
+      # Ini hanya menyentuh byga-ai-multivote-db (storage aplikasi), BUKAN chart_db.
       - name: Run D1 migrations (remote)
         run: |
           for f in $(ls migrations/*.sql | sort); do
             echo "==> $f"
+            if [ "$f" = "migrations/0006_four_vote_roles.sql" ]; then
+              schema="$(npx wrangler d1 execute byga-ai-multivote-db --remote --command='PRAGMA table_info(analysis_results)' 2>/dev/null || true)"
+              if echo "$schema" | grep -q "role" &&                  echo "$schema" | grep -q "vote_index" &&                  echo "$schema" | grep -q "vote_group" &&                  echo "$schema" | grep -q "data_source"; then
+                echo "0006 already applied; skipping."
+                continue
+              fi
+            fi
             npx wrangler d1 execute byga-ai-multivote-db --remote --file="$f"
           done
 
-      # Secret login dipasang dari GitHub Secrets ke Pages (bukan ke Worker).
-      # Harus SEBELUM deploy: secret baru hanya terbaca oleh deployment berikutnya.
-      # printf '%s' dipakai agar nilai tidak ikut newline di akhir.
       - name: Validate GitHub login secrets
         env:
           APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
