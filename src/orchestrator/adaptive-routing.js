@@ -1,72 +1,75 @@
-const DEFAULT_CORE = ["google-gemini", "groq", "openrouter"];
-const DEFAULT_VERIFIERS = ["hugging-face", "cohere", "nvidia-api-catalog"];
-const DEFAULT_BACKUPS = ["mistral-ai", "sambanova-cloud", "vercel-ai-gateway"];
+const DEFAULT_AI_A = "google-gemini";
+const DEFAULT_AI_B = "groq";
 
-const unique = values => [...new Set(values.filter(Boolean))];
-const ids = list => new Set((Array.isArray(list) ? list : []).map(p => p?.meta?.provider).filter(Boolean));
+const unique = values => [...new Set((values || []).filter(Boolean))];
 
-function envList(env, key, fallback) {
-  const raw = env?.[key];
-  if (typeof raw !== "string" || !raw.trim()) return fallback;
-  return unique(raw.split(",").map(x => x.trim()).filter(Boolean));
+function envInt(env, key, fallback, min, max) {
+  const n = Number(env?.[key]);
+  return Number.isFinite(n) ? Math.max(min, Math.min(max, Math.floor(n))) : fallback;
 }
 
 export function scoreICTSetup(ict = {}) {
   const m5 = ict?.timeframes?.m5 || {};
   const m15 = ict?.timeframes?.m15 || {};
   const h1 = ict?.timeframes?.h1 || {};
+  const h4 = ict?.timeframes?.h4 || {};
   let score = 0;
   const reasons = [];
-  const alignment = ict?.hierarchy?.alignment;
 
-  if (alignment === "bullish" || alignment === "bearish") { score += 25; reasons.push("HTF alignment"); }
-  else score += 5;
-  if ((m5.structure?.recent_events || []).length) { score += 25; reasons.push("M5 BOS"); }
+  if (ict?.hierarchy?.alignment === "bullish" || ict?.hierarchy?.alignment === "bearish") {
+    score += 25; reasons.push("HTF alignment");
+  }
+  if ((m5.structure?.recent_events || []).length) { score += 20; reasons.push("M5 BOS"); }
   if ((m5.liquidity?.recent_sweeps || []).length) { score += 20; reasons.push("liquidity sweep"); }
   if ((m5.fvg?.recent || []).length) { score += 15; reasons.push("M5 FVG"); }
-  if ((m15.fvg?.recent || []).length || (h1.fvg?.recent || []).length) { score += 10; reasons.push("HTF FVG"); }
-  if (["premium", "discount"].includes(m5.dealing_range?.zone)) { score += 5; reasons.push(m5.dealing_range.zone); }
-  if (m5.bias && h1.bias && m5.bias === h1.bias) score += 5;
+  if ((m15.fvg?.recent || []).length || (h1.fvg?.recent || []).length || (h4.fvg?.recent || []).length) {
+    score += 15; reasons.push("higher-timeframe FVG");
+  }
+  if (m5.bias && h1.bias && m5.bias === h1.bias) { score += 5; reasons.push("M5/H1 bias aligned"); }
 
-  return { score: Math.min(100, score), reasons, directional_bias: alignment === "mixed" ? null : alignment || m5.bias || null };
+  return {
+    score: Math.min(100, score),
+    reasons,
+    directional_bias: ["bullish", "bearish"].includes(ict?.hierarchy?.alignment)
+      ? ict.hierarchy.alignment
+      : (m5.bias || null)
+  };
 }
 
-export function chooseAdaptivePlan(env, providers, { ict, requestedModels } = {}) {
-  const available = ids(providers);
-  const explicit = Array.isArray(requestedModels) && requestedModels.length;
-  const selected = new Set((explicit ? requestedModels : [...available]).filter(id => available.has(id)));
-  const score = scoreICTSetup(ict);
-  const coreOrder = envList(env, "AI_CORE_PROVIDERS", DEFAULT_CORE);
-  const verifierOrder = envList(env, "AI_VERIFIER_PROVIDERS", DEFAULT_VERIFIERS);
-  const backupOrder = envList(env, "AI_BACKUP_PROVIDERS", DEFAULT_BACKUPS);
-  const take = (order, n, exclude = new Set()) => order.filter(id => selected.has(id) && !exclude.has(id)).slice(0, n);
-  const plan = { gate: "AI", setup_score: score.score, reasons: score.reasons, stages: [] };
+export function chooseAdaptivePlan(env, providers, { requestedModels } = {}) {
+  const available = new Set((providers || []).map(p => p?.meta?.provider).filter(Boolean));
+  const requested = Array.isArray(requestedModels) ? requestedModels.filter(x => available.has(x)) : [];
+  const configuredA = String(env?.AI_A_PROVIDER || DEFAULT_AI_A);
+  const configuredB = String(env?.AI_B_PROVIDER || DEFAULT_AI_B);
+  const aiA = available.has(configuredA) ? configuredA : [...available][0];
+  const aiB = available.has(configuredB) && configuredB !== aiA
+    ? configuredB
+    : [...available].find(id => id !== aiA);
 
-  if (!selected.size) { plan.gate = "NO_AI"; return plan; }
+  const selected = requested.length >= 2
+    ? requested.slice(0, 2)
+    : unique([aiA, aiB]).filter(Boolean).slice(0, 2);
 
-  // All explicitly enabled/selected voters participate in the primary vote.
-  // Adaptive routing is retained for backup recovery, not for silently reducing the vote count.
-  let core = [...selected];
-  if (core.length < 3) core = [...new Set([...core, ...[...selected].filter(id => !core.includes(id))])].slice(0, 3);
-  if (!core.length) { plan.gate = "NO_AI"; return plan; }
+  const votesPerAI = envInt(env, "AI_VOTES_PER_PROVIDER", 2, 2, 2);
+  const roles = selected.map((providerId, i) => ({
+    role: i === 0 ? "AI_A" : "AI_B",
+    providerId,
+    votes: votesPerAI
+  }));
 
-  plan.stages.push({ type: "core", providers: core });
-  plan.verifier = [];
-  plan.backups = take(backupOrder, 2, new Set(core));
-  plan.verifier_threshold = 0;
-  return plan;
+  return {
+    gate: roles.length === 2 ? "AI" : "NO_AI",
+    data_source: "chart_db",
+    voter_count: roles.length,
+    votes_per_provider: votesPerAI,
+    total_vote_slots: roles.reduce((n, r) => n + r.votes, 0),
+    roles,
+    stages: roles.length ? [{ type: "confluence_vote", roles }] : []
+  };
 }
 
-export function nextAdaptiveStage(plan, results = []) {
-  const good = results.filter(r => r?.status === "success" && ["BUY", "SELL", "NO_TRADE"].includes(r.signal));
-  if (!good.length) return plan.backups?.length ? { type: "fallback", providers: plan.backups } : null;
-
-  const counts = good.reduce((a, r) => ({ ...a, [r.signal]: (a[r.signal] || 0) + 1 }), {});
-  const top = Math.max(...Object.values(counts));
-  const tied = Object.values(counts).filter(x => x === top).length > 1;
-  const conflict = tied || (good.length >= 3 && top < Math.ceil(good.length * 2 / 3));
-  if (conflict && plan.backups?.length) return { type: "fallback", providers: plan.backups };
-  return null;
-}
-
-export const ROUTING_DEFAULTS = { core: DEFAULT_CORE, verifier: DEFAULT_VERIFIERS, backups: DEFAULT_BACKUPS };
+export const ROUTING_DEFAULTS = {
+  ai_a: DEFAULT_AI_A,
+  ai_b: DEFAULT_AI_B,
+  votes_per_provider: 2
+};

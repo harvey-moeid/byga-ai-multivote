@@ -20,12 +20,13 @@ export async function saveAnalysis(db, analysis, results = []) {
       a.prompt_version,a.market_schema_version,a.majority_signal,a.buy_votes,a.sell_votes,
       a.no_trade_votes,a.success_count,a.error_count,a.total_models,a.duration_ms,
       a.last_price,a.price_change_pct_24h
-    )];
+    ))];
+
   for (const r of results) statements.push(db.prepare(`INSERT INTO analysis_results
-    (id,analysis_id,provider,provider_label,status,signal,reason,raw_answer,confidence,duration_ms,error_code,error,adapter_version,created_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
-      r.id,r.analysis_id,r.provider,r.provider_label,r.status,r.signal,r.reason,r.raw_answer,
-      r.confidence,r.duration_ms,r.error_code,r.error,r.adapter_version,r.created_at
+    (id,analysis_id,provider,provider_label,role,vote_index,vote_group,data_source,status,signal,reason,raw_answer,confidence,duration_ms,error_code,error,adapter_version,created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
+      r.id,r.analysis_id,r.provider,r.provider_label,r.role,r.vote_index,r.vote_group,r.data_source,
+      r.status,r.signal,r.reason,r.raw_answer,r.confidence,r.duration_ms,r.error_code,r.error,r.adapter_version,r.created_at
     ));
   await db.batch(statements);
   return a;
@@ -54,7 +55,7 @@ export async function getAnalysisDetail(db, id) {
   if (typeof id !== "string" || !id.trim()) return null;
   const analysis = await db.prepare("SELECT * FROM analyses WHERE id = ?").bind(id).first();
   if (!analysis) return null;
-  const results = await db.prepare("SELECT id,analysis_id,provider,provider_label,status,signal,reason,raw_answer,confidence,duration_ms,error_code,error,adapter_version,created_at FROM analysis_results WHERE analysis_id = ? ORDER BY rowid ASC").bind(id).all();
+  const results = await db.prepare("SELECT id,analysis_id,provider,provider_label,role,vote_index,vote_group,data_source,status,signal,reason,raw_answer,confidence,duration_ms,error_code,error,adapter_version,created_at FROM analysis_results WHERE analysis_id = ? ORDER BY role ASC, vote_index ASC").bind(id).all();
   return { ...analysis, market_snapshot: safeJson(analysis.market_snapshot), results: results.results || [] };
 }
 function safeJson(value) {
