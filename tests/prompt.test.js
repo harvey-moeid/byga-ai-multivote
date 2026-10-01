@@ -3,7 +3,7 @@ import { PROMPT_VERSION, buildPrompt } from "../src/prompt/builder.js";
 
 describe("prompt builder", () => {
   it("uses the current prompt version", () => {
-    expect(PROMPT_VERSION).toBe("1.13.0");
+    expect(PROMPT_VERSION).toBe("1.14.0");
   });
 
   it("requires the exact two-line output contract", () => {
@@ -22,6 +22,6 @@ describe("prompt builder", () => {
     expect(system).toContain("deterministic ICT-style");
     expect(user).toContain("SIGNAL: BUY");
     expect(user).toContain("REASON: <one concise sentence>");
-    expect(user).not.toContain("OUTPUT CONTRACT â");
+    expect(user).not.toContain("Ã¢");
   });
 });

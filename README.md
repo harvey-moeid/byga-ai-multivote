@@ -21,9 +21,8 @@ User -> [LOGIN] -> session cookie -> [MULAI ANALISIS] -> POST /api/analyze
                                             |
                           Prompt Builder (compact, versioned, indikator server-side)
                                             |
-                          6 AI Adapters (Promise.allSettled)
-        GPT-OSS 20B | Llama 3.3 70B | DeepSeek R1 Distill 32B
-        Qwen3 30B A3B | Mistral Small 3.1 24B | Gemma 4 26B A4B
+                          AI Adapters (semua model aktif, paralel)
+        Semua provider/model yang aktif di Settings
                                             |
                           Normalizer -> Voting Engine
                                             |
@@ -214,12 +213,12 @@ Tidak ada di aplikasi ini, dan sengaja tidak ditambahkan: eksekusi order otomati
 
 ## 10. Catatan biaya
 
-Setiap analisis menjalankan **satu prompt yang sama ke tiap model aktif**, paralel. Biaya input kira-kira `ukuran prompt x jumlah model`, dan model reasoning (DeepSeek R1 Distill, Qwen3) cenderung lebih lambat/mahal per request (PRD Bagian 11).
+Setiap analisis mengirim **satu prompt yang sama ke semua model aktif yang dipilih**, paralel. Adaptive routing tidak lagi memangkas voter utama; fallback hanya dipakai untuk pemulihan bila voter gagal. Biaya input kira-kira `ukuran prompt x jumlah model`, dan model reasoning (DeepSeek R1 Distill, Qwen3) cenderung lebih lambat/mahal per request (PRD Bagian 11).
 
 Penghemat yang sudah aktif:
 
 - **Prompt compact (sejak v1.8.0):** candle dikirim sebagai baris `[k,o,h,l,c,v]` (bukan object per candle), harga/volume dibulatkan 1 desimal, tanpa flag `closed` dan timestamp panjang.
-- **Cap candle kecil:** M5 60, M15 32, H1 48, H4 42, D1 30. Statistik dan indikator tetap dihitung dari seluruh window.
+- **Cap candle kecil:** M5 32, M15 12, H1 8, H4 6, D1 14. Statistik dan indikator tetap dihitung dari seluruh window.
 - **Ringkasan sinyal lama = total saja** (`buy_days`, `sell_days`, `no_trade_days`), tanpa breakdown per hari.
 - **Run guard di `POST /api/analyze`** (dibandingkan dengan analisis tersimpan terakhir; run yang gagal tidak tersimpan sehingga tidak memblokir):
   - `ANALYZE_COOLDOWN_SECONDS` (default `60`): jeda minimum antar run, `0` untuk mematikan.
@@ -230,7 +229,7 @@ Prompt v1.9.0 menambahkan indikator (EMA20/50, RSI14, ATR14, swing pivot, posisi
 
 ## 11. Current quality baseline
 
-- Prompt version: **1.11.0** (compact candle encoding + deterministic ICT context + indicators + key levels).
+- Prompt version: **1.14.0** (compact candle encoding + deterministic ICT context + indicators + key levels).
 - Horizon sinyal: **1-4 jam ke depan** (12-48 candle M5), dengan kriteria eksplisit BUY/SELL vs NO_TRADE di prompt.
 - ICT structure engine: **1.0.0**, server-side BOS/CHOCH/MSS, liquidity sweeps, EQH/EQL, FVG, order blocks, displacement, premium/discount, and M5 session/killzone context.
 - Market schema version: **1.4.0**.
@@ -245,7 +244,7 @@ Prompt v1.9.0 menambahkan indikator (EMA20/50, RSI14, ATR14, swing pivot, posisi
 
 ## 12. Validation roadmap
 
-Lapisan riset berikutnya adalah signal outcome tracking dan historical replay/backtesting. Keduanya sengaja dipisah dari voting engine agar pembuatan sinyal bisa dievaluasi tanpa memperkenalkan auto trading.
+Lapisan riset berikutnya adalah signal outcome tracking dan historical replay/backtesting. Keduanya sengaja dipisah dari weighted voting engine agar pembuatan sinyal bisa dievaluasi tanpa memperkenalkan auto trading.
 
 ## External AI providers
 
@@ -264,3 +263,9 @@ npx wrangler pages secret put NVIDIA_API_KEY
 npx wrangler pages secret put SAMBANOVA_API_KEY
 npx wrangler pages secret put AI_GATEWAY_API_KEY
 ```
+
+### 13. Voting dan routing
+
+Voting menghitung vote mentah BUY/SELL/NO_TRADE dan weighted vote. Jika model mengirim confidence, bobotnya dibatasi ke rentang 0.5-1.0; confidence yang tidak tersedia tetap berbobot 1. Bobot eksplisit per provider dapat diberikan melalui argumen `weights` pada `computeVoting()`. Hasil akhir hanya menjadi BUY/SELL bila satu sinyal memiliki weighted score tertinggi secara unik; tie menjadi NO_TRADE.
+
+Semua model aktif/terpilih ikut primary vote. Adaptive routing tetap digunakan untuk recovery: provider backup hanya dipanggil ketika primary gagal atau hasil valid tidak tersedia. Dengan demikian jumlah voter yang ditampilkan selalu sesuai jumlah model yang benar-benar dipanggil.

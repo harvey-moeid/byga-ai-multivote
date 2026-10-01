@@ -1,6 +1,6 @@
 import { buildICTContext } from "./ict.js";
 
-export const PROMPT_VERSION = "1.13.0";
+export const PROMPT_VERSION = "1.14.0";
 
 const cap = {
   current_m5: 32,
@@ -23,18 +23,18 @@ const ema = (a, n) => {
 const stats = c => {
   const closes = c.map(x => x.close);
   const out = { candles: c.length, ema20: round(ema(c, 20), 2), ema50: round(ema(c, 50), 2) };
-  if (c.length >= 14) {
-    let gains = 0, losses = 0;
-    for (let i = 1; i < closes.length; i++) {
-      const d = closes[i] - closes[i - 1];
-      if (d > 0) gains += d; else if (d < 0) losses -= d;
-    }
-    const avgGain = gains / Math.max(1, closes.length - 1);
-    const avgLoss = losses / Math.max(1, closes.length - 1);
-    out.rsi14 = round(avgLoss ? 100 - 100 / (1 + avgGain / avgLoss) : 100, 2);
-    const tr = c.slice(-14).reduce((a, x) => a + x.high - x.low, 0) / 14;
-    out.atr14 = round(tr, 2);
-    out.atr_pct = round(tr / (closes.at(-1) || 1) * 100, 3);
+  if (c.length > 14) {
+    const n = 14;
+    let gain = 0, loss = 0;
+    for (let i = 1; i <= n; i++) { const d = closes[i] - closes[i - 1]; gain += Math.max(d, 0); loss += Math.max(-d, 0); }
+    let avgGain = gain / n, avgLoss = loss / n;
+    for (let i = n + 1; i < closes.length; i++) { const d = closes[i] - closes[i - 1]; avgGain = (avgGain * (n - 1) + Math.max(d, 0)) / n; avgLoss = (avgLoss * (n - 1) + Math.max(-d, 0)) / n; }
+    out.rsi14 = round(avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss), 2);
+    const tr = [];
+    for (let i = 1; i < c.length; i++) { const prev = c[i - 1].close; tr.push(Math.max(c[i].high - c[i].low, Math.abs(c[i].high - prev), Math.abs(c[i].low - prev))); }
+    let atr = tr.slice(0, n).reduce((a, x) => a + x, 0) / n;
+    for (let i = n; i < tr.length; i++) atr = (atr * (n - 1) + tr[i]) / n;
+    out.atr14 = round(atr, 2); out.atr_pct = round(atr / (closes.at(-1) || 1) * 100, 3);
   }
   const hi = Math.max(...c.map(x => x.high));
   const lo = Math.min(...c.map(x => x.low));
@@ -92,7 +92,7 @@ export function buildPrompt(snap = {}, record = null) {
     signal_track_record: record || null
   };
   // Derivatives (funding rate / open interest / basis) are no longer part of
-  // the prompt — chart_db (now the primary market data source) doesn't carry
+  // the prompt â chart_db (now the primary market data source) doesn't carry
   // them, so the field is dropped entirely rather than only when missing.
 
   const system = "You are an AI market analyst using a deterministic ICT-style multi-timeframe framework. Never infer a trend from a single snapshot. Return only the requested decision format.";

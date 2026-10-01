@@ -65,3 +65,5 @@ describe("computeVoting", () => {
     expect(v).not.toHaveProperty("confidence");
   });
 });
+
+describe("weighted voting",()=>{it("uses model confidence when available",()=>{const v=computeVoting([{status:"success",provider:"a",signal:"BUY",confidence:1},{status:"success",provider:"b",signal:"SELL",confidence:0}]);expect(v.majority_signal).toBe("BUY");expect(v.weighted_buy).toBeGreaterThan(v.weighted_sell);});it("allows explicit provider weights",()=>{const v=computeVoting([{status:"success",provider:"a",signal:"BUY"},{status:"success",provider:"b",signal:"SELL"}],{weights:{b:2}});expect(v.majority_signal).toBe("SELL");});});

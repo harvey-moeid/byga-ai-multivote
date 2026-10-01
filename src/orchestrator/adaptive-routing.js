@@ -42,19 +42,18 @@ export function chooseAdaptivePlan(env, providers, { ict, requestedModels } = {}
   const take = (order, n, exclude = new Set()) => order.filter(id => selected.has(id) && !exclude.has(id)).slice(0, n);
   const plan = { gate: "AI", setup_score: score.score, reasons: score.reasons, stages: [] };
 
-  if (score.score < 40) {
-    plan.gate = "NO_AI";
-    return plan;
-  }
+  if (!selected.size) { plan.gate = "NO_AI"; return plan; }
 
-  let core = take(coreOrder, 3);
+  // All explicitly enabled/selected voters participate in the primary vote.
+  // Adaptive routing is retained for backup recovery, not for silently reducing the vote count.
+  let core = [...selected];
   if (core.length < 3) core = [...new Set([...core, ...[...selected].filter(id => !core.includes(id))])].slice(0, 3);
   if (!core.length) { plan.gate = "NO_AI"; return plan; }
 
   plan.stages.push({ type: "core", providers: core });
-  plan.verifier = take(verifierOrder, 2, new Set(core));
-  plan.backups = take(backupOrder, 2, new Set([...core, ...plan.verifier]));
-  plan.verifier_threshold = score.score >= 75 ? 2 : 1;
+  plan.verifier = [];
+  plan.backups = take(backupOrder, 2, new Set(core));
+  plan.verifier_threshold = 0;
   return plan;
 }
 
@@ -66,7 +65,7 @@ export function nextAdaptiveStage(plan, results = []) {
   const top = Math.max(...Object.values(counts));
   const tied = Object.values(counts).filter(x => x === top).length > 1;
   const conflict = tied || (good.length >= 3 && top < Math.ceil(good.length * 2 / 3));
-  if (conflict && plan.verifier?.length) return { type: "verifier", providers: plan.verifier };
+  if (conflict && plan.backups?.length) return { type: "fallback", providers: plan.backups };
   return null;
 }
 
