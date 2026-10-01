@@ -23,7 +23,8 @@ export async function runAnalysis(env, logger = () => {}, { models } = {}) {
     fallback: env.FALLBACK_EXCHANGE || "bybit,okx",
     symbol, marketType, timeframe,
     candleLimit: number(env.CANDLE_LIMIT, 150),
-    db: env.DB, env
+    db: env.DB, env,
+    chartDb: env.CHART_DB
   });
   const prompt = buildPrompt(snapshot, null);
   const settings = await loadModelSettings(env.DB);
@@ -106,5 +107,5 @@ export async function runAnalysis(env, logger = () => {}, { models } = {}) {
     voting, results: results.map(({raw_answer, ...r}) => r), duration_ms: row.duration_ms,
     prompt_version: row.prompt_version, market_schema_version: row.market_schema_version,
     routing: { gate: routing.gate, setup_score: setup.score, reasons: setup.reasons, ai_calls: results.length, stages_used: results.length ? 1 + (results.length > 3 ? 1 : 0) : 0 },
-    market: { fallback_used: !!snapshot.fallback_used, cached_snapshot_used: !!snapshot.cached_snapshot_used } };
+    market: { fallback_used: !!snapshot.fallback_used, cached_snapshot_used: !!snapshot.cached_snapshot_used, chart_db_used: snapshot.market_data_source === "chart_db" } };
 }

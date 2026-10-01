@@ -9,6 +9,17 @@ database_name = "byga-ai-multivote-db"
 # IMPORTANT: this MUST be the ID of the NEW D1 database created with `npm run db:create`.
 database_id = "2c9fc422-93ea-4d21-8c6a-3ec9fa2502ac"
 
+# Primary market data source for POST /api/analyze — see
+# src/market/chartDbProvider.js. READ-ONLY from this project: owned and
+# ingested (every 5 min, Cloudflare Cron Trigger) by the separate
+# `byga-chart` project (https://github.com/harvey-moeid/byga-chart).
+# Nothing in this project writes to chart_db. If it's unreachable or stale,
+# src/market/provider.js falls back to the live exchange chain below.
+[[d1_databases]]
+binding = "CHART_DB"
+database_name = "chart_db"
+database_id = "76f53f4c-a542-48a7-8eb8-10dbcba3c1aa"
+
 # Two secrets are required for the login gate (functions/_middleware.js)
 # and are NOT set here - secrets don't belong in wrangler.toml. Set them
 # with `wrangler pages secret put APP_PASSWORD` / `... SESSION_SECRET`,
