@@ -68,6 +68,10 @@ export function chooseAdaptivePlan(env, providers, { requestedModels } = {}) {
   };
 }
 
+export function nextAdaptiveStage() {
+  return null;
+}
+
 export const ROUTING_DEFAULTS = {
   ai_a: DEFAULT_AI_A,
   ai_b: DEFAULT_AI_B,
