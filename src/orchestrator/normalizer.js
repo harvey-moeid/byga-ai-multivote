@@ -15,7 +15,7 @@ function fromJson(text) {
     try {
       const obj = JSON.parse(candidate);
       const signal = String(obj?.signal ?? obj?.SIGNAL ?? "").trim().toUpperCase();
-      if (["BUY", "SELL", "NO_TRADE"].includes(signal)) {
+      if (["BUY","SELL"].includes(signal)) {
         return {
           signal,
           reason: String(obj?.reason ?? obj?.REASON ?? "").trim()

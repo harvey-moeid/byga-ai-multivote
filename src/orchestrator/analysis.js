@@ -58,7 +58,7 @@ export async function runAnalysis(env, logger = () => {}, { models } = {}) {
       const raw = await provider.run({ env: runEnv, prompt, timeoutMs, maxRetries });
       const answer = typeof raw === "string" ? raw : (raw?.raw_answer ?? raw?.text ?? raw?.content ?? "");
       const parsed = raw?.signal ? { signal: String(raw.signal).toUpperCase(), reason: raw.reason || "" } : parseSignal(answer);
-      if (!["BUY", "SELL", "NO_TRADE"].includes(parsed.signal)) {
+      if (!["BUY", "SELL"].includes(parsed.signal)) {
         throw Object.assign(new Error("AI response does not contain a valid SIGNAL"), { code: "INVALID_AI_RESPONSE" });
       }
       return {
@@ -127,7 +127,7 @@ export async function runAnalysis(env, logger = () => {}, { models } = {}) {
     prompt_version: String(env.PROMPT_VERSION || PROMPT_VERSION),
     market_schema_version: String(env.MARKET_SCHEMA_VERSION || "1.4.0"),
     majority_signal: voting.majority_signal,
-    buy_votes: voting.buy, sell_votes: voting.sell, no_trade_votes: voting.no_trade,
+    buy_votes: voting.buy, sell_votes: voting.sell, no_trade_votes: 0,
     success_count: voting.success, error_count: voting.error, total_models: voting.total_models,
     duration_ms: Date.now() - started, last_price: Number.isFinite(Number(snapshot.last_price)) ? Number(snapshot.last_price) : null,
     price_change_pct_24h: Number.isFinite(Number(snapshot.price_change_pct_24h)) ? Number(snapshot.price_change_pct_24h) : null

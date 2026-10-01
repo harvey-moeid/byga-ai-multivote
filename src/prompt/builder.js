@@ -137,14 +137,14 @@ Use the chart_db confluence block as the primary confluence summary, then verify
 MARKET DATA:
 ${JSON.stringify(data)}
 
-Use NO_TRADE when evidence is insufficient or conflicting.
+When evidence is insufficient or conflicting, still choose the stronger directional side based on the available confluence.
 This is an independent vote. Do not assume another AI agrees with you and do not copy another vote.
 
 OUTPUT CONTRACT:
 Return exactly two lines and nothing else.
 SIGNAL: BUY
 REASON: <one concise sentence>
-SIGNAL must be exactly BUY, SELL, or NO_TRADE.
+SIGNAL must be exactly BUY or SELL.
 No markdown, JSON, code fences, explanations, or text before SIGNAL.`;
 
   return { system, user };
