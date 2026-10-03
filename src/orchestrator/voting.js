@@ -5,7 +5,10 @@ export function computeVoting(results=[],{weights={}}={}){
  const scores={BUY:0,SELL:0,NO_TRADE:0};
  for(const r of good){const configured=Number(weights?.[r.provider]);const w=Number.isFinite(configured)&&configured>0?configured:voteWeight(r);scores[r.signal]+=w;}
  const max=Math.max(scores.BUY,scores.SELL,scores.NO_TRADE), leaders=SIGNALS.filter(s=>scores[s]===max);
- const majority_signal=(max>0&&leaders.length===1)?leaders[0]:"NO_TRADE";
+ let majority_signal="NO_TRADE", decision_reason="NO_VALID_VOTES";
+ if(good.length===0) decision_reason="NO_VALID_VOTES";
+ else if(leaders.length!==1) decision_reason="VOTE_TIE";
+ else { majority_signal=leaders[0]; decision_reason=majority_signal==="NO_TRADE"?"MODEL_NO_TRADE":"MAJORITY"; }
  const buy=good.filter(r=>r.signal==="BUY").length,sell=good.filter(r=>r.signal==="SELL").length,no_trade=good.filter(r=>r.signal==="NO_TRADE").length,weightedTotal=scores.BUY+scores.SELL+scores.NO_TRADE;
- return {buy,sell,no_trade,total_models:total,success:good.length,error:total-good.length,majority_signal,buy_vote_share:total?buy/total*100:0,sell_vote_share:total?sell/total*100:0,no_trade_vote_share:total?no_trade/total*100:0,weighted_buy:Number(scores.BUY.toFixed(3)),weighted_sell:Number(scores.SELL.toFixed(3)),weighted_no_trade:Number(scores.NO_TRADE.toFixed(3)),weighted_vote_share:{BUY:weightedTotal?Number((scores.BUY/weightedTotal*100).toFixed(2)):0,SELL:weightedTotal?Number((scores.SELL/weightedTotal*100).toFixed(2)):0,NO_TRADE:weightedTotal?Number((scores.NO_TRADE/weightedTotal*100).toFixed(2)):0}};
+ return {buy,sell,no_trade,total_models:total,success:good.length,error:total-good.length,majority_signal,decision_reason,buy_vote_share:total?buy/total*100:0,sell_vote_share:total?sell/total*100:0,no_trade_vote_share:total?no_trade/total*100:0,weighted_buy:Number(scores.BUY.toFixed(3)),weighted_sell:Number(scores.SELL.toFixed(3)),weighted_no_trade:Number(scores.NO_TRADE.toFixed(3)),weighted_vote_share:{BUY:weightedTotal?Number((scores.BUY/weightedTotal*100).toFixed(2)):0,SELL:weightedTotal?Number((scores.SELL/weightedTotal*100).toFixed(2)):0,NO_TRADE:weightedTotal?Number((scores.NO_TRADE/weightedTotal*100).toFixed(2)):0}};
 }

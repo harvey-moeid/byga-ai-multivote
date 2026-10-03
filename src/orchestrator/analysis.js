@@ -11,6 +11,7 @@ import { buildICTContext } from "../prompt/ict.js";
 
 const nowIso = () => new Date().toISOString();
 const number = (v, fallback) => Number.isFinite(Number(v)) ? Number(v) : fallback;
+const PROVIDER_COUNT = 6;
 
 export async function runAnalysis(env, logger = () => {}, { models } = {}) {
   const started = Date.now();
@@ -30,8 +31,6 @@ export async function runAnalysis(env, logger = () => {}, { models } = {}) {
     chartDb: env.CHART_DB
   });
 
-  // chart_db is the confluence source. The exchange fallback is only used
-  // when chart_db is unavailable; the routing metadata remains explicit.
   const ict = buildICTContext({
     m5: snapshot.candles || [],
     m15: snapshot.history_m15 || [],
@@ -40,12 +39,19 @@ export async function runAnalysis(env, logger = () => {}, { models } = {}) {
   });
 
   const settings = await loadModelSettings(env.DB);
-  const selected = selectProviders(PROVIDERS, models).filter(p => settings[p.meta.provider]?.enabled !== false);
-  if (!selected.length) throw new Error("No AI providers are enabled");
+  const selected = selectProviders(PROVIDERS, models).filter(p => settings[p.meta.provider]?.enabled !== false && Boolean(env[p.meta.keyEnv]));
+  if (selected.length < PROVIDER_COUNT) {
+    const error = Object.assign(new Error(`Minimal ${PROVIDER_COUNT} provider AI aktif dengan API key. Saat ini tersedia ${selected.length}.`), { code: "INSUFFICIENT_AI_PROVIDERS", required: PROVIDER_COUNT, available: selected.length });
+    throw error;
+  }
   const runEnv = applyModelOverrides(env, settings);
   const timeoutMs = Math.max(1000, number(env.AI_TIMEOUT_MS, 60000));
   const maxRetries = Math.max(0, Math.min(5, number(env.MAX_RETRIES, 1)));
   const routing = chooseAdaptivePlan(env, selected, { requestedModels: models });
+  if (routing.roles.length !== PROVIDER_COUNT) {
+    const error = Object.assign(new Error(`Routing AI tidak dapat membentuk ${PROVIDER_COUNT} provider unik.`), { code: "INSUFFICIENT_AI_PROVIDERS", required: PROVIDER_COUNT, available: routing.roles.length });
+    throw error;
+  }
   const providerMap = new Map(selected.map(p => [p.meta.provider, p]));
 
   const callVote = async ({ role, providerId, voteIndex }) => {
@@ -58,110 +64,61 @@ export async function runAnalysis(env, logger = () => {}, { models } = {}) {
       const raw = await provider.run({ env: runEnv, prompt, timeoutMs, maxRetries });
       const answer = typeof raw === "string" ? raw : (raw?.raw_answer ?? raw?.text ?? raw?.content ?? "");
       const parsed = raw?.signal ? { signal: String(raw.signal).toUpperCase(), reason: raw.reason || "" } : parseSignal(answer);
-      if (!["BUY", "SELL"].includes(parsed.signal)) {
-        throw Object.assign(new Error("AI response does not contain a valid SIGNAL"), { code: "INVALID_AI_RESPONSE" });
+      if (!["BUY", "SELL", "NO_TRADE"].includes(parsed.signal)) {
+        throw Object.assign(new Error("AI response does not contain a valid SIGNAL: BUY, SELL, or NO_TRADE"), { code: "INVALID_AI_RESPONSE" });
       }
       return {
-        id: crypto.randomUUID(),
-        analysis_id: null,
-        provider: meta.provider || providerId,
-        provider_label: meta.providerLabel || meta.provider || providerId,
-        role,
-        vote_index: voteIndex,
-        vote_group: `${role}_${voteIndex}`,
-        data_source: "chart_db",
-        status: "success",
-        signal: parsed.signal,
-        reason: parsed.reason || "",
-        raw_answer: String(answer),
+        id: crypto.randomUUID(), analysis_id: null, provider: meta.provider || providerId,
+        provider_label: meta.providerLabel || meta.provider || providerId, role, vote_index: voteIndex,
+        vote_group: `${role}_${voteIndex}`, data_source: snapshot.market_data_source || "chart_db",
+        status: "success", signal: parsed.signal, reason: parsed.reason || "", raw_answer: String(answer),
         confidence: Number.isFinite(Number(raw?.confidence)) ? Number(raw.confidence) : null,
-        duration_ms: Date.now() - startedVote,
-        error_code: null,
-        error: null,
-        adapter_version: String(meta.adapterVersion || "1.0.0"),
-        created_at: nowIso()
+        duration_ms: Date.now() - startedVote, error_code: null, error: null,
+        adapter_version: String(meta.adapterVersion || "1.0.0"), created_at: nowIso()
       };
     } catch (err) {
       return {
-        id: crypto.randomUUID(),
-        analysis_id: null,
-        provider: meta.provider || providerId,
-        provider_label: meta.providerLabel || meta.provider || providerId,
-        role,
-        vote_index: voteIndex,
-        vote_group: `${role}_${voteIndex}`,
-        data_source: "chart_db",
-        status: err?.name === "TimeoutError" ? "timeout" : "error",
-        signal: null,
-        reason: "",
-        raw_answer: "",
-        confidence: null,
-        duration_ms: Date.now() - startedVote,
-        error_code: String(err?.code || err?.error_code || "PROVIDER_ERROR"),
-        error: String(err?.message || err).slice(0, 1000),
-        adapter_version: String(meta.adapterVersion || "1.0.0"),
-        created_at: nowIso()
+        id: crypto.randomUUID(), analysis_id: null, provider: meta.provider || providerId,
+        provider_label: meta.providerLabel || meta.provider || providerId, role, vote_index: voteIndex,
+        vote_group: `${role}_${voteIndex}`, data_source: snapshot.market_data_source || "chart_db",
+        status: err?.name === "TimeoutError" ? "timeout" : "error", signal: null, reason: "", raw_answer: "",
+        confidence: null, duration_ms: Date.now() - startedVote,
+        error_code: String(err?.code || err?.error_code || "PROVIDER_ERROR"), error: String(err?.message || err).slice(0, 1000),
+        adapter_version: String(meta.adapterVersion || "1.0.0"), created_at: nowIso()
       };
     }
   };
 
   const roles = routing.roles || [];
-  const slots = roles.flatMap(({ role, providerId, votes }) =>
-    Array.from({ length: votes }, (_, i) => ({ role, providerId, voteIndex: i + 1 }))
-  );
-
-  // One independent call per vote slot, across every selected provider
-  // (6 providers x votes_per_provider each, by default 12 calls total).
-  const results = routing.gate === "AI" ? await Promise.all(slots.map(callVote)) : [];
+  const slots = roles.flatMap(({ role, providerId, votes }) => Array.from({ length: votes }, (_, i) => ({ role, providerId, voteIndex: i + 1 })));
+  const results = await Promise.all(slots.map(callVote));
   const cleanResults = results.filter(Boolean);
   const voting = computeVoting(cleanResults);
   const setup = scoreICTSetup(ict);
   const createdAt = nowIso();
   const id = `ANL-${createdAt.slice(0,10).replaceAll("-", "")}-${createdAt.slice(11,19).replaceAll(":", "")}-${crypto.randomUUID().slice(0,4).toUpperCase()}`;
-
   for (const r of cleanResults) r.analysis_id = id;
 
   const row = {
     id, created_at: createdAt, exchange: snapshot.exchange || "chart_db", symbol,
     market_type: String(env.MARKET_TYPE || "perpetual"), timeframe,
-    market_snapshot: JSON.stringify(snapshot),
-    prompt_version: String(env.PROMPT_VERSION || PROMPT_VERSION),
-    market_schema_version: String(env.MARKET_SCHEMA_VERSION || "1.4.0"),
-    majority_signal: voting.majority_signal,
-    buy_votes: voting.buy, sell_votes: voting.sell, no_trade_votes: 0,
+    market_snapshot: JSON.stringify(snapshot), prompt_version: String(env.PROMPT_VERSION || PROMPT_VERSION),
+    market_schema_version: String(env.MARKET_SCHEMA_VERSION || "1.4.0"), majority_signal: voting.majority_signal,
+    decision_reason: voting.decision_reason, buy_votes: voting.buy, sell_votes: voting.sell, no_trade_votes: voting.no_trade,
     success_count: voting.success, error_count: voting.error, total_models: voting.total_models,
     duration_ms: Date.now() - started, last_price: Number.isFinite(Number(snapshot.last_price)) ? Number(snapshot.last_price) : null,
     price_change_pct_24h: Number.isFinite(Number(snapshot.price_change_pct_24h)) ? Number(snapshot.price_change_pct_24h) : null
   };
 
   await saveAnalysis(env.DB, row, cleanResults);
-  logger?.("analysis.completed", {
-    id, signal: voting.majority_signal, duration_ms: row.duration_ms,
-    data_source: "chart_db", vote_slots: cleanResults.length
-  });
+  logger?.("analysis.completed", { id, signal: voting.majority_signal, decision_reason: voting.decision_reason, duration_ms: row.duration_ms, data_source: snapshot.market_data_source || "chart_db", vote_slots: cleanResults.length });
 
   return {
-    id, created_at: createdAt, exchange: row.exchange, symbol, timeframe,
-    last_price: row.last_price, majority_signal: voting.majority_signal,
-    voting, results: cleanResults.map(({ raw_answer, ...r }) => r),
-    duration_ms: row.duration_ms,
-    prompt_version: row.prompt_version,
-    market_schema_version: row.market_schema_version,
-    routing: {
-      gate: routing.gate,
-      data_source: "chart_db",
-      setup_score: setup.score,
-      reasons: setup.reasons,
-      providers: roles,
-      ai_calls: cleanResults.length,
-      total_vote_slots: routing.total_vote_slots,
-      expected_vote_slots: routing.total_vote_slots
-    },
-    market: {
-      data_source: snapshot.market_data_source || "chart_db",
-      fallback_used: !!snapshot.fallback_used,
-      cached_snapshot_used: !!snapshot.cached_snapshot_used,
-      chart_db_used: snapshot.market_data_source === "chart_db"
-    }
+    id, created_at: createdAt, exchange: row.exchange, symbol, timeframe, last_price: row.last_price,
+    majority_signal: voting.majority_signal, decision_reason: voting.decision_reason, voting,
+    results: cleanResults.map(({ raw_answer, ...r }) => r), duration_ms: row.duration_ms,
+    prompt_version: row.prompt_version, market_schema_version: row.market_schema_version,
+    routing: { gate: "AI", data_source: snapshot.market_data_source || "chart_db", setup_score: setup.score, reasons: setup.reasons, providers: roles, ai_calls: cleanResults.length, total_vote_slots: routing.total_vote_slots, expected_vote_slots: routing.total_vote_slots },
+    market: { data_source: snapshot.market_data_source || "chart_db", fallback_used: !!snapshot.fallback_used, cached_snapshot_used: !!snapshot.cached_snapshot_used, chart_db_used: snapshot.market_data_source === "chart_db" }
   };
 }
