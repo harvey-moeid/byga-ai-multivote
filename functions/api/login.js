@@ -5,10 +5,14 @@
  * single-user (personal use, PRD non-goal: "layanan multi-user publik"),
  * so there's no account system - just one password gate in front of the
  * dashboard and every /api/* route (enforced in functions/_middleware.js).
+ *
+ * Brute-force guard: setiap percobaan dihitung secara atomik SEBELUM
+ * password dibandingkan (lihat src/lib/loginAttempts.js), jadi request
+ * paralel tidak bisa menguji lebih dari MAX_ATTEMPTS password per jendela.
  */
 
 import { createSessionToken, timingSafeEqual, sessionCookieHeader } from "../../src/lib/auth.js";
-import { checkLockout, recordFailure, recordSuccess } from "../../src/lib/loginAttempts.js";
+import { registerAttempt, recordSuccess } from "../../src/lib/loginAttempts.js";
 
 export async function onRequestPost(context) {
   const { request, env } = context;
@@ -22,15 +26,7 @@ export async function onRequestPost(context) {
 
   const ip = request.headers.get("cf-connecting-ip") || "unknown";
 
-  const lockout = await checkLockout(env.DB, ip);
-  if (lockout.locked) {
-    return json(429, {
-      error_code: "LOCKED_OUT",
-      error: "Terlalu banyak percobaan gagal. Coba lagi nanti.",
-      locked_until: lockout.lockedUntil,
-    });
-  }
-
+  // Body yang rusak ditolak sebelum menghitung percobaan: bukan tebakan password.
   let body;
   try {
     body = await request.json();
@@ -38,15 +34,23 @@ export async function onRequestPost(context) {
     return json(400, { error_code: "BAD_REQUEST", error: "Body harus JSON." });
   }
 
+  const attempt = await registerAttempt(env.DB, ip);
+  if (!attempt.allowed) {
+    return json(429, {
+      error_code: "LOCKED_OUT",
+      error: "Terlalu banyak percobaan gagal. Coba lagi nanti.",
+      locked_until: attempt.lockedUntil,
+    });
+  }
+
   const password = typeof body?.password === "string" ? body.password : "";
   const valid = password.length > 0 && timingSafeEqual(password, env.APP_PASSWORD);
 
   if (!valid) {
-    const { attempts, maxAttempts } = await recordFailure(env.DB, ip);
     return json(401, {
       error_code: "INVALID_PASSWORD",
       error: "Password salah.",
-      attempts_remaining: Math.max(0, maxAttempts - attempts),
+      attempts_remaining: Math.max(0, attempt.maxAttempts - attempt.attempts),
     });
   }
 
