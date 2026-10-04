@@ -1,5 +1,52 @@
 # AI Multi-Vote BTCUSDT Signal
 
+## BYGA Trading Office 3D
+
+Halaman utama sekarang adalah kantor miniatur 3D interaktif, dengan ruang bos,
+ruang meeting, delapan meja analis, dan lounge. Delapan karakter analis dan bos
+berdiri, berjalan melalui pintu, duduk menghadap meja meeting, membahas hasil
+API, lalu berjalan kembali. Karakter visual tidak mengubah jumlah panggilan:
+analisis tetap memilih **6 provider untuk 12 vote**. Gelembung pembahasan memakai
+signal, reason, dan error dari respons API; tidak ada hasil pasar simulasi pada
+dashboard produksi.
+
+Tombol **Analis**, **Hasil**, dan **Riwayat** membuka panel; **Models** mengatur
+model server. Kamera bisa diputar, diperbesar, atau diarahkan ke ruang meeting.
+Riwayat ditampilkan dalam WIB.
+
+Pilihan grafis **Hemat (50%)**, **Seimbang (75%)**, **Tinggi (100%)**, dan
+**Otomatis** mengubah resolusi render 3D relatif terhadap ukuran layar (DPR
+dibatasi 2), bayangan, dan lampu. Teks/tombol tetap dirender pada resolusi browser.
+Pilihan disimpan di localStorage. Otomatis menyesuaikan tier menurut biaya
+render dan frame time; target 30/60 FPS bukan jaminan pada semua perangkat.
+Perjalanan karakter tetap berjalan di seluruh tier. Rendering berhenti saat
+tab tidak terlihat. Aset furnitur digabung per material untuk mengurangi draw call.
+
+Model karakter dan material dibuat secara prosedural untuk tampilan miniatur.
+Ini belum menyamai fotorealisme gambar referensi; model karakter rigged dan
+material artistik khusus bisa menggantikan aset ini di tahap berikutnya.
+
+```sh
+npm ci
+npm run build
+npm run preview
+# Preview visual: http://localhost:4173 (tanpa API produksi)
+npm test
+npx playwright install chromium
+npm run test:office
+```
+
+Tes browser memakai respons API mock yang diberi label uji, memeriksa pixel
+canvas, layout desktop/mobile, pemilihan provider, perjalanan sembilan karakter,
+meeting, hasil, kembali ke meja, error cooldown, dan penyimpanan kualitas.
+Opsional: `CHROME_PATH` untuk binary Chromium lokal dan `OFFICE_TEST_OUTPUT`
+untuk lokasi screenshot.
+
+Workflow CI menjalankan tes dan build. Workflow deploy membangun
+`dashboard/office.bundle.js` sebelum upload Cloudflare Pages. Untuk deploy
+manual, jalankan `npm run build` sebelum `wrangler pages deploy dashboard`.
+Bundle Three.js disajikan lokal, tanpa CDN saat runtime.
+
 Implementasi teknis dari **PRD v1.2 Final (AI Worker Revision)**. Aplikasi personal untuk memperoleh second opinion dari **6 model AI** (via satu binding external AI providers) terhadap kondisi **BTCUSDT perpetual M5**, dengan voting BUY/SELL/NO_TRADE dan histori 365 hari.
 
 > Tidak ada eksekusi order otomatis. Hasil AI murni bahan informasi (lihat PRD Bagian 3 & 40).

@@ -83,6 +83,7 @@
         if (!res.ok) throw new Error(d.error || 'HTTP ' + res.status);
         msg.className = 'mdl-msg ok';
         msg.textContent = 'Tersimpan. Berlaku di analisis berikutnya.';
+        window.dispatchEvent(new Event('models:updated'));
       } catch (e) {
         msg.className = 'mdl-msg err';
         msg.textContent = e.message || 'Gagal menyimpan.';

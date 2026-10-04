@@ -23,6 +23,19 @@ jobs:
         run: npm ci
       - name: Run unit tests
         run: npm test
+      - name: Build 3D office
+        run: npm run build
+      - name: Install browser for office verification
+        run: npx playwright install --with-deps chromium
+      - name: Verify 3D office on desktop and mobile
+        run: npm run test:office
+      - name: Upload office screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: office-screenshots
+          path: /tmp/byga-office-qa
+          if-no-files-found: ignore
 
   deploy:
     name: Deploy to Cloudflare Pages
@@ -47,6 +60,7 @@ jobs:
         run: npm ci
 
       - name: Ensure Cloudflare Pages project exists
+        # Bundle Three.js locally so production does not depend on a CDN.
         run: npx wrangler pages project create byga-ai-multivote --production-branch=main || true
 
       # Semua migration dijalankan urut nama file.
@@ -85,4 +99,4 @@ jobs:
           printf '%s' "$SESSION_SECRET" | npx wrangler pages secret put SESSION_SECRET --project-name=byga-ai-multivote
 
       - name: Deploy to Cloudflare Pages
-        run: npx wrangler pages deploy dashboard --project-name=byga-ai-multivote
+        run: npm run build && npx wrangler pages deploy dashboard --project-name=byga-ai-multivote

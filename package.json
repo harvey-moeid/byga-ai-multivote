@@ -3,9 +3,18 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "build": "esbuild src/office/scene.js --bundle --minify --format=esm --target=es2022 --outfile=dashboard/office.bundle.js",
+    "preview": "node scripts/preview-office.mjs",
+    "test:office": "node scripts/verify-office.mjs",
     "test": "vitest run"
   },
   "devDependencies": {
+    "esbuild": "^0.25.12",
+    "playwright": "^1.63.0",
+    "pngjs": "^7.0.0",
     "vitest": "^2.1.0"
+  },
+  "dependencies": {
+    "three": "^0.186.1"
   }
 }

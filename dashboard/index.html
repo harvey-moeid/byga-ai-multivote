@@ -1,49 +1,43 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="theme-color" content="#080b12" />
-<meta name="description" content="AI-powered BTCUSDT market analysis terminal" />
-<title>BYGA &mdash; AI Multi-Vote Terminal</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css" />
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f8faf8"><meta name="description" content="BYGA Trading Office — kantor analis AI 3D interaktif">
+<title>BYGA Trading Office</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/office.css">
 </head>
-<body class="terminal">
-<div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
-<div class="layout">
-  <aside class="sidebar">
-    <a class="brand" href="/" aria-label="BYGA home"><span class="brand-mark">B<span>&middot;</span></span><span class="brand-copy"><b>BYGA<span class="brand-ai">.AI</span></b><small>INTELLIGENCE TERMINAL</small></span></a>
-    <div class="side-label">WORKSPACE</div>
-    <a class="nav-link active" href="#overview"><span class="nav-icon">&#9638;</span> Overview <span class="nav-dot"></span></a>
-    <a class="nav-link" href="#history"><span class="nav-icon">&#9636;</span> Analysis history</a>
-    <div class="side-spacer"></div>
-    <div class="side-status"><span class="pulse"></span><span><b>System ready</b><small>Manual execution only</small></span></div>
-    <div class="sidebar-foot">BYGA AI <span>&middot;</span> BUILD 1.0</div>
-  </aside>
-  <main class="main">
-    <header class="topbar"><div class="breadcrumb"><span>Workspace</span><i>/</i><b>Overview</b></div><div class="top-actions"><span class="market-chip"><span class="pulse"></span> BTCUSDT <em>PERP</em></span><button id="logout-btn" class="logout-btn" aria-label="Logout">&#9211; <span>Logout</span></button></div></header>
-    <section id="overview" class="content">
-      <div class="hero-row"><div><div class="eyebrow"><span class="eyebrow-line"></span> MARKET INTELLIGENCE <span class="eyebrow-muted">/ 01</span></div><h1>Decision <span>terminal.</span></h1><p class="hero-sub">Multi-model intelligence for BTCUSDT perpetual markets.</p></div><div class="hero-date"><span class="live-dot"></span> LIVE WORKSPACE <small id="clock">&mdash;</small></div></div>
-      <div class="market-banner"><div class="market-symbol"><div class="btc-icon">&#8383;</div><div><b>Bitcoin <span> / Tether</span></b><small>BTCUSDT &middot; PERPETUAL &middot; 5 MIN</small></div></div><div class="market-divider"></div><div class="market-price"><small>LAST ANALYZED PRICE</small><strong id="price">&mdash;</strong><span id="price-change" class="change">Waiting for analysis</span></div><div class="market-context"><span class="context-label">ANALYSIS ENGINE</span><b><span class="pulse"></span> AI MULTI-VOTE</b><small>Manual trigger &middot; No auto-trading</small></div></div>
-      <div class="section-heading"><div><h2>Analysis overview</h2><p>Ringkasan dari eksekusi analisis terbaru.</p></div><span class="updated" id="last-updated">BELUM ADA DATA</span></div>
-      <div class="metrics-grid">
-        <article class="metric-card"><div class="metric-top"><span>CONSENSUS SIGNAL</span><span class="metric-icon">&#9670;</span></div><div class="metric-value" id="consensus">&mdash;</div><div class="metric-foot" id="consensus-note">Menunggu analisis pertama</div></article>
-        <article class="metric-card"><div class="metric-top"><span>MODEL RESPONSES</span><span class="metric-icon">&#10003;</span></div><div class="metric-value"><span id="responses">&mdash;</span><small id="responses-total"> / &mdash;</small></div><div class="metric-foot">Successful model responses</div></article>
-        <article class="metric-card"><div class="metric-top"><span>VOTE DISTRIBUTION</span><span class="metric-icon">&#9637;</span></div><div class="metric-value" id="vote-total">&mdash;</div><div class="vote-bar"><i id="buy-bar"></i><i id="sell-bar"></i></div><div class="legend"><span><i class="dot buy"></i> BUY <b id="buy-count">0</b></span><span><i class="dot sell"></i> SELL <b id="sell-count">0</b></span><span><i class="dot neutral"></i> HOLD <b id="neutral-count">0</b></span></div></article>
-        <article class="metric-card"><div class="metric-top"><span>EXECUTION TIME</span><span class="metric-icon">&#9719;</span></div><div class="metric-value"><span id="duration">&mdash;</span><small id="duration-unit"></small></div><div class="metric-foot">End-to-end analysis duration</div></article>
-      </div>
-      <div class="workspace-grid">
-        <section class="panel run-panel"><div class="panel-head"><div><div class="panel-kicker">CONTROL CENTER</div><h2>Run analysis</h2></div><span class="manual-tag">MANUAL</span></div><p class="panel-desc">Jalankan analisis market dan pilih 6 provider AI yang digunakan untuk 12 vote.</p><div class="provider-picker"><div class="provider-picker-head"><span class="panel-kicker">PROVIDER TUGAS</span><span id="provider-count" class="provider-count">0/6 dipilih</span></div><div id="provider-options" class="provider-options"><span class="provider-loading">Memuat provider...</span></div><div id="provider-help" class="provider-help">Pilih tepat 6 provider yang memiliki API key. Masing-masing akan mendapat 2 vote.</div></div><button id="analyze-btn" class="run-button"><span class="run-symbol">&#9654;</span><span id="analyze-label">Mulai Analisis</span><span class="button-arrow">&#8594;</span></button><div id="run-message" class="run-message" role="status">Analisis hanya berjalan saat Anda memulainya.</div><div class="run-meta"><span><i class="pulse"></i> Market data</span><span>AI consensus</span><span>D1 storage</span></div></section>
-        <section class="panel result-panel"><div class="panel-head"><div><div class="panel-kicker">LATEST OUTPUT</div><h2>Model consensus</h2></div><span id="result-status" class="result-status">NO DATA</span></div><div id="result-empty" class="empty-state"><div class="empty-glyph">&#9634;</div><b>Belum ada hasil analisis</b><p>Jalankan analisis untuk melihat ringkasan keputusan model.</p></div><div id="model-results" class="model-results"></div></section>
-      </div>
-      <section id="history" class="panel history-panel"><div class="panel-head"><div><div class="panel-kicker">AUDIT TRAIL</div><h2>Analysis history</h2></div><button id="refresh-history" class="text-button">&#8635; Refresh</button></div><div class="table-wrap"><table><thead><tr><th>ANALYSIS ID</th><th>DATE & TIME</th><th>MARKET</th><th>CONSENSUS</th><th>MODELS</th><th></th></tr></thead><tbody id="history-body"><tr><td colspan="6" class="table-empty">Memuat riwayat&hellip;</td></tr></tbody></table></div></section>
-      <footer class="footer"><span>BYGA<span class="brand-ai">.AI</span> <i>&middot;</i> AI MARKET INTELLIGENCE</span><span>For informational purposes only. No automated execution.</span></footer>
-    </section>
-  </main>
-</div>
-<script src="/app.js"></script>
-</body>
-</html>
+<body class="office-app">
+<header class="office-header">
+  <a href="/" class="office-brand" aria-label="BYGA Trading Office"><span class="brand-monogram">BG</span><span><b>BYGA <span>TRADING OFFICE</span></b><small>AI MULTI-VOTE · BTCUSDT</small></span></a>
+  <div class="top-actions"><label class="quality-control"><span>Kualitas</span><select id="quality" aria-label="Kualitas grafis"><option value="auto">Otomatis</option><option value="low">Hemat · 50%</option><option value="medium">Seimbang · 75%</option><option value="high">Tinggi · 100%</option></select></label><button id="logout-btn" class="office-icon" title="Keluar" aria-label="Keluar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 5H5v14h4M13 8l4 4-4 4M9 12h11"/></svg></button></div>
+</header>
+<main id="office-stage" aria-label="Kantor trading 3D">
+  <div id="office-canvas"></div>
+  <div id="scene-loading" class="scene-loading" role="status"><span class="loading-ring"></span><b>Membuka kantor…</b></div>
+  <div id="scene-error" class="scene-error" hidden><h2>Kantor 3D tidak dapat ditampilkan</h2><p id="scene-error-message">WebGL tidak tersedia.</p><button id="scene-retry">Coba lagi</button></div>
+  <div class="office-status"><span class="status-light"></span><div><b id="phase-title">Analis di meja kerja</b><span id="phase-subtitle">Siap untuk meeting berikutnya</span></div></div>
+  <div id="speech-layer" aria-live="polite"></div>
+  <div class="view-controls" aria-label="Kontrol kamera">
+    <button id="view-office" class="office-icon" title="Seluruh kantor" aria-label="Seluruh kantor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m3 9 9-6 9 6v12H3ZM9 21v-7h6v7"/></svg></button>
+    <button id="view-meeting" class="office-icon" title="Ruang meeting" aria-label="Ruang meeting"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="8" width="14" height="8" rx="2"/><path d="M8 3v3m8-3v3M8 18v3m8-3v3M2 11v2m20-2v2"/></svg></button>
+    <button id="zoom-in" class="office-icon" title="Perbesar" aria-label="Perbesar">+</button><button id="zoom-out" class="office-icon" title="Perkecil" aria-label="Perkecil">−</button><span id="render-info">AUTO</span>
+  </div>
+</main>
+<footer class="office-dock">
+  <div class="dock-market"><span class="market-code">BTC<span>USDT</span></span><b id="price">—</b><small id="price-change">Belum ada snapshot</small></div>
+  <button id="result-shortcut" class="dock-consensus" aria-label="Lihat hasil analisis"><small>KONSENSUS</small><b id="consensus">—</b><span id="responses">0</span><span id="responses-total"> / 12 vote</span></button>
+  <nav class="dock-nav" aria-label="Panel kantor"><button data-panel="providers">Analis</button><button data-panel="results">Hasil</button><button data-panel="history">Riwayat</button></nav>
+  <button id="analyze-btn" class="office-run" disabled><svg viewBox="0 0 24 24" fill="currentColor"><path d="m8 5 11 7-11 7z"/></svg><span id="analyze-label">Mulai Analisis</span></button>
+  <div id="run-message" class="office-message" role="status">Memuat provider AI…</div>
+</footer>
+<dialog id="office-panel" class="office-panel">
+  <header class="office-panel-head"><div><small>BYGA WORKSPACE</small><h2 id="panel-title">Tim analis</h2></div><button id="panel-close" class="office-icon" aria-label="Tutup panel" title="Tutup">×</button></header>
+  <section data-panel-content="providers"><div class="provider-picker-head"><b>Provider tugas</b><span id="provider-count">0/6 dipilih</span></div><div id="provider-options" class="office-providers">Memuat provider…</div><p id="provider-help">Pilih 6 provider untuk 12 vote.</p><p id="team-note">8 analis visual · 1 bos · 12 vote AI</p></section>
+  <section data-panel-content="results" hidden>
+    <div class="result-summary"><span id="result-status">BELUM ADA HASIL</span><small id="last-updated">—</small><p id="consensus-note">Menunggu analisis pertama.</p></div>
+    <div class="result-stats"><span>BUY <b id="buy-count">0</b></span><span>SELL <b id="sell-count">0</b></span><span>Abstain <b id="neutral-count">0</b></span><span>Durasi <b id="duration">—</b><small id="duration-unit"></small></span></div>
+    <div class="office-vote-bar"><i id="buy-bar"></i><i id="sell-bar"></i></div><span id="vote-total" hidden>0</span><div id="result-empty" class="office-empty">Belum ada hasil analisis.</div><div id="model-results" class="office-model-results"></div>
+  </section>
+  <section data-panel-content="history" hidden><div class="history-toolbar"><span>Waktu Indonesia Barat</span><button id="refresh-history">Refresh</button></div><div class="office-history-scroll"><table><thead><tr><th>ID</th><th>Waktu · WIB</th><th>Market</th><th>Sinyal</th><th>Vote</th><th></th></tr></thead><tbody id="history-body"><tr><td colspan="6">Memuat riwayat…</td></tr></tbody></table></div></section>
+</dialog>
+<script src="/app.js"></script><script type="module" src="/office.bundle.js"></script>
+</body></html>
