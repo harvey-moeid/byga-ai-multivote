@@ -2,15 +2,15 @@ import { describe, expect, it } from "vitest";
 import { PROVIDERS, classifyProviderError } from "../src/providers/registry.js";
 
 describe("external AI provider registry", () => {
-  it("contains all nine configured providers", () => {
+  it("contains nine external providers and Workers AI", () => {
     expect(PROVIDERS.map(p => p.meta.provider)).toEqual([
       "google-gemini", "groq", "openrouter", "mistral-ai", "hugging-face",
-      "cohere", "nvidia-api-catalog", "sambanova-cloud", "vercel-ai-gateway"
+      "cohere", "nvidia-api-catalog", "sambanova-cloud", "vercel-ai-gateway", "workers-ai"
     ]);
   });
 
   it("has unique provider ids and labels", () => {
-    expect(new Set(PROVIDERS.map(p => p.meta.provider)).size).toBe(9);
+    expect(new Set(PROVIDERS.map(p => p.meta.provider)).size).toBe(10);
     expect(PROVIDERS.every(p => p.meta.providerLabel && p.meta.modelId)).toBe(true);
   });
 

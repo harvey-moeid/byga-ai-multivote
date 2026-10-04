@@ -7,7 +7,8 @@ const definitions = [
   { provider: "cohere", providerLabel: "Cohere", modelEnv: "COHERE_MODEL", keyEnv: "COHERE_API_KEY", endpoint: "https://api.cohere.com/v2/chat", kind: "cohere", defaultModel: "command-a-plus-05-2026" },
   { provider: "nvidia-api-catalog", providerLabel: "NVIDIA API Catalog", modelEnv: "NVIDIA_MODEL", keyEnv: "NVIDIA_API_KEY", endpoint: "https://integrate.api.nvidia.com/v1/chat/completions", kind: "nvidia-api-catalog", defaultModel: "openai/gpt-oss-20b" },
   { provider: "sambanova-cloud", providerLabel: "SambaNova Cloud", modelEnv: "SAMBANOVA_MODEL", keyEnv: "SAMBANOVA_API_KEY", endpointEnv: "SAMBANOVA_BASE_URL", endpoint: "https://api.sambanova.ai/v1/chat/completions", defaultModel: "DeepSeek-V3.1" },
-  { provider: "vercel-ai-gateway", providerLabel: "Vercel AI Gateway", modelEnv: "AI_GATEWAY_MODEL", keyEnv: "AI_GATEWAY_API_KEY", endpoint: "https://ai-gateway.vercel.sh/v1/chat/completions", defaultModel: "openai/gpt-oss-120b" }
+  { provider: "vercel-ai-gateway", providerLabel: "Vercel AI Gateway", modelEnv: "AI_GATEWAY_MODEL", keyEnv: "AI_GATEWAY_API_KEY", endpoint: "https://ai-gateway.vercel.sh/v1/chat/completions", defaultModel: "openai/gpt-oss-120b" },
+  { provider: "workers-ai", providerLabel: "Cloudflare Workers AI", modelEnv: "WORKERS_AI_MODEL", keyEnv: "AI", kind: "workers-ai", defaultModel: "@cf/meta/llama-3.1-8b-instruct-fast" }
 ];
 
 const MODEL_ALIASES = {
@@ -60,6 +61,19 @@ export function classifyProviderError(status, message = "") {
 }
 
 async function request(def, { env, prompt, timeoutMs = 60000, maxRetries = 1 }) {
+  if (def.kind === 'workers-ai') {
+    if (typeof env.AI?.run !== 'function') throw Object.assign(new Error('Workers AI binding AI belum tersedia.'), { code:'MISSING_AI_BINDING' });
+    let timer;
+    try {
+      const output = await Promise.race([
+        env.AI.run(String(env[def.modelEnv] || def.defaultModel), { messages:chatMessages(splitPrompt(prompt)), max_tokens:512, temperature:.2 }),
+        new Promise((_,reject) => { timer=setTimeout(()=>reject(Object.assign(new Error('Workers AI timed out'),{name:'TimeoutError',code:'AI_TIMEOUT'})),timeoutMs); })
+      ]);
+      const text=String(output?.response || output?.choices?.[0]?.message?.content || '');
+      if (!text) throw Object.assign(new Error('Workers AI returned no text'),{code:'EMPTY_AI_RESPONSE'});
+      return {raw_answer:text};
+    } finally { clearTimeout(timer); }
+  }
   const apiKey = env?.[def.keyEnv];
   if (!apiKey) throw Object.assign(new Error(`Missing secret ${def.keyEnv}`), { code: "MISSING_API_KEY" });
 

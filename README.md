@@ -1,318 +1,185 @@
-# AI Multi-Vote BTCUSDT Signal
+# BYGA Trading Office
 
-## BYGA Trading Office 3D
+Kantor trading 3D untuk BTCUSDT.P dengan perhitungan deterministik multi-timeframe,
+enam karakter analis AI, cron lima menit, dan notifikasi Discord bersyarat.
 
-Halaman utama sekarang adalah kantor miniatur 3D interaktif, dengan ruang bos,
-ruang meeting, delapan meja analis, dan lounge. Delapan karakter analis dan bos
-berdiri, berjalan melalui pintu, duduk menghadap meja meeting, membahas hasil
-API, lalu berjalan kembali. Karakter visual tidak mengubah jumlah panggilan:
-analisis tetap memilih **6 provider untuk 12 vote**. Gelembung pembahasan memakai
-signal, reason, dan error dari respons API; tidak ada hasil pasar simulasi pada
-dashboard produksi.
+## Alur produksi
 
-Tombol **Analis**, **Hasil**, dan **Riwayat** membuka panel; **Models** mengatur
-model server. Kamera bisa diputar, diperbesar, atau diarahkan ke ruang meeting.
-Riwayat ditampilkan dalam WIB.
+1. Baca candle **tertutup** H1, M15, M5 dari binding D1 `CHART_DB` (`chart_db`).
+   Simbol tampilan `BTCUSDT.P` dipetakan ke simbol penyimpanan `BTCUSDT` perpetual.
+   Modul `src/pipeline/chart.js` hanya menjalankan **SELECT**. Tidak ada fallback
+   ke API exchange, ingest, backfill, atau penulisan ke chart_db dalam alur ini.
+2. Hitung tiga snapshot tanpa AI: SMC/ICT, indikator, volume.
+   Browser menjalankan `calculateSnapshot`; Pages dan cron memakai modul murni
+   yang sama dan menghitung ulang di server agar hasil klien tidak dipercaya begitu saja.
+3. Masing-masing kelompok menggabungkan H1 (tren), M15 (struktur), M5 (pemicu).
+   Arah tren dan pemicu harus sama, sedangkan struktur boleh NETRAL atau searah.
+   Hasil kelompok adalah BUY, SELL, atau NETRAL.
+4. Jika minimal **dua dari tiga kelompok** sepakat BUY atau SELL, panggil enam analis:
+   dua menerima hanya snapshot SMC/ICT, dua indikator, dua volume. Setiap karakter
+   menghasilkan satu vote BUY/SELL. Error/timeout/NO_TRADE tidak dihitung sebagai vote.
+5. Jika minimal **empat dari enam** vote valid mendukung **arah awal** perhitungan,
+   keputusan disetujui. Empat vote berlawanan arah awal tetap ditolak.
+6. Hanya keputusan yang disetujui masuk antrean Discord. Pengiriman membutuhkan
+   toggle Discord aktif dan webhook terkonfigurasi. Hasil lainnya tetap di histori.
 
-Pilihan grafis **Hemat (50%)**, **Seimbang (75%)**, **Tinggi (100%)**, dan
-**Otomatis** mengubah resolusi render 3D relatif terhadap ukuran layar (DPR
-dibatasi 2), bayangan, dan lampu. Teks/tombol tetap dirender pada resolusi browser.
-Pilihan disimpan di localStorage. Otomatis menyesuaikan tier menurut biaya
-render dan frame time; target 30/60 FPS bukan jaminan pada semua perangkat.
-Perjalanan karakter tetap berjalan di seluruh tier. Rendering berhenti saat
-tab tidak terlihat. Aset furnitur digabung per material untuk mengurangi draw call.
+Enam karakter dan bos berjalan, duduk, berdiskusi dengan gelembung vote/alasan,
+lalu kembali ke meja. Dua staf pendukung tetap di meja. Bos memimpin tanpa vote
+tambahan. UI yang terbuka memantau hasil cron dan menampilkan meeting baru;
+ketika web ditutup, analisis dan pengiriman tetap berjalan di server.
 
-Model karakter dan material dibuat secara prosedural untuk tampilan miniatur.
-Ini belum menyamai fotorealisme gambar referensi; model karakter rigged dan
-material artistik khusus bisa menggantikan aset ini di tahap berikutnya.
+## Perhitungan dan parameter
+
+Atur melalui tombol **Setting**; seluruh parameter disimpan di DB aplikasi dan
+dipakai bersama oleh browser, manual, dan cron pada candle berikutnya.
+
+| Kelompok | Aturan/ukuran | Default utama |
+| --- | --- | --- |
+| SMC/ICT | Pivot terkonfirmasi, BOS/CHOCH, liquidity sweep dua arah, FVG aktif, displacement, order block, dealing range premium/discount | Radius pivot 3, range 80, event 20, ATR 14, displacement 1× ATR, minimum FVG 0.05× ATR, minimum 2 konfirmasi |
+| Indikator | EMA, RSI Wilder, MACD, Bollinger Bands, ADX/DI Wilder | EMA 20/50, RSI 14 dengan batas 55/45, MACD 12/26/9, BB 20/2, ADX 14 ≥20, minimum 3 konfirmasi |
+| Volume | Relative volume terhadap candle sebelumnya, CMF, perubahan OBV, arah badan candle | Periode 20, RVOL ≥1.2, CMF absolut ≥0.05, jendela OBV 10 |
+
+Default 250 candle per timeframe. Pengaturan divalidasi agar periode, ambang,
+urutan timeframe, dan jumlah candle masuk akal. Timeframe tersedia M5, M15, H1,
+H4, D1; tren harus lebih besar dari struktur dan struktur lebih besar dari pemicu.
+
+Pivot baru tersedia setelah candle di sisi kanan tertutup; tidak memakai data
+masa depan. FVG yang sudah penuh terisi dan order block yang invalid dinonaktifkan.
+SMC/ICT di sini adalah definisi algoritmik yang dapat diatur, bukan semua varian
+interpretasi diskresioner ICT. CMF/OBV merupakan proksi OHLCV, **bukan** delta
+transaksi atau order-flow asli. Data stale, candle kurang, OHLC rusak, celah waktu,
+atau sumber perpetual tidak dikenal menghentikan pemrosesan sebelum AI.
+
+chart_db memiliki data Bybit, Binance Futures, serta OKX Swap. Volume OKX memakai
+kontrak; volume Bybit/Binance memakai BTC. Kelompok volume hanya memakai rangkaian
+terakhir dari sumber yang sama. Bila belum cukup, hasilnya NETRAL; satuan tidak
+dicampur dan ditampilkan dalam snapshot. Harga berasal dari candle yang tersedia
+di chart_db; metadata sumber dicatat.
+
+## Enam karakter AI
+
+Setiap slot memiliki nama, provider, dan model sendiri. Provider yang sama boleh
+dipakai di semua slot, termasuk dengan model berbeda. Model override diisolasi
+per panggilan; tidak ada persyaratan enam provider unik.
+
+Provider: Gemini, Groq, OpenRouter, Mistral, Hugging Face, Cohere, NVIDIA,
+SambaNova, Vercel AI Gateway, dan **Cloudflare Workers AI**.
+
+Workers AI memakai binding `AI`, tanpa API key tersendiri. Default model
+`@cf/meta/llama-3.1-8b-instruct-fast`. Provider eksternal memakai secret berikut
+pada **Pages**, sesuai pilihan karakter:
+
+| Provider | Secret |
+| --- | --- |
+| Gemini | GEMINI_API_KEY |
+| Groq | GROQ_API_KEY |
+| OpenRouter | OPENROUTER_API_KEY |
+| Mistral | MISTRAL_API_KEY |
+| Hugging Face | HF_TOKEN |
+| Cohere | COHERE_API_KEY |
+| NVIDIA | NVIDIA_API_KEY |
+| SambaNova | SAMBANOVA_API_KEY |
+| Vercel Gateway | AI_GATEWAY_API_KEY |
+
+Default karakter diambil dari provider yang tersedia; Workers AI menjadi pilihan
+ketika provider eksternal tidak tersedia. Provider/model bisa diganti dari web.
+`/api/models` adalah pengaturan default provider lama; alur baru memakai
+`/api/settings` dengan model per karakter.
+
+## Discord dan keamanan
+
+Masukkan URL webhook pada **Setting → Cron dan Discord**. Field ini write only:
+nilai disimpan AES-GCM terenkripsi memakai SESSION_SECRET, dan GET tidak pernah
+mengembalikan URL/token. Kosongkan field untuk mempertahankan webhook yang ada.
+Rotasi SESSION_SECRET memerlukan pengisian ulang webhook yang terenkripsi.
+Alternatif: secret Pages `DISCORD_WEBHOOK_URL`, yang mengambil prioritas atas nilai
+web. Checkbox hapus hanya menghapus nilai yang disimpan melalui web.
+
+Tujuan webhook dibatasi HTTPS `discord.com`/`discordapp.com`; redirect ditolak.
+Mention dinonaktifkan. Outbox dibuat atomik bersama analisis dan enam hasil vote.
+Pengiriman yang sudah diakui Discord tidak diulang, dan retry tidak memanggil AI
+lagi. HTTP 429/5xx atau kegagalan jaringan dicoba ulang oleh pemeriksaan berikutnya;
+4xx permanen ditandai gagal. Sinyal tertunda **kedaluwarsa setelah 15 menit** agar
+webhook yang baru dipasang tidak menerima tumpukan sinyal lama.
+Seperti webhook HTTP umumnya, bila Discord menerima pesan tetapi respons hilang,
+retry jaringan dapat menghasilkan pesan ganda; ID analisis disertakan di pesan.
+
+APP_PASSWORD dan SESSION_SECRET wajib untuk login. Scheduler memakai HMAC
+domain khusus atas timestamp dan body, berlaku dua menit. `/api/cron` tidak
+membutuhkan sesi browser, tetapi selalu memverifikasi signature. Endpoint lain
+tetap dilindungi login. Secret provider/webhook tidak dikirim ke browser atau log.
+
+## Cron dan penyimpanan
+
+Pages tidak memiliki Cron Trigger langsung. Worker `byga-multivote-scheduler`
+(`wrangler.scheduler.toml`) menjalankan `*/5 * * * *` dan memanggil `/api/cron`
+Pages yang ditandatangani. Scheduler hanya memerlukan SESSION_SECRET dan APP_URL;
+tidak perlu menyalin API key provider atau mengakses chart_db.
+
+Lock unik per simbol/timeframe/candle pemicu mencegah manual dan cron memanggil
+AI dua kali. Candle yang sudah selesai tetap tidak diproses ulang setelah setting
+diubah. Run yang ditinggalkan dapat dipulihkan setelah lease sepuluh menit.
+DB aplikasi menyimpan konfigurasi, snapshot ukuran terhitung, hasil vote, run, dan
+outbox. Raw window candle tidak disalin seluruhnya ke DB aplikasi.
+Histori lama tetap tersedia. Run baru memiliki retensi default 30 hari melalui
+cron; ubah `PIPELINE_RETENTION_DAYS` (1–365) bila diperlukan. chart_db tidak dibersihkan.
+
+## Build dan deploy
+
+Node.js **22+**. GitHub CI menjalankan unit test, build bundle lokal, dan tes
+Playwright desktop/mobile sebelum deploy.
 
 ```sh
 npm ci
+npm test
 npm run build
 npm run preview
-# Preview visual: http://localhost:4173 (tanpa API produksi)
-npm test
-npx playwright install chromium
+```
+
+Preview visual lokal: http://localhost:4173, tanpa API produksi. Verifikasi browser:
+
+```sh
+npx playwright install --with-deps chromium
 npm run test:office
 ```
 
-Tes browser memakai respons API mock yang diberi label uji, memeriksa pixel
-canvas, layout desktop/mobile, pemilihan provider, perjalanan sembilan karakter,
-meeting, hasil, kembali ke meja, error cooldown, dan penyimpanan kualitas.
-Opsional: `CHROME_PATH` untuk binary Chromium lokal dan `OFFICE_TEST_OUTPUT`
-untuk lokasi screenshot.
+GitHub Actions membutuhkan secret `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`,
+`APP_PASSWORD`, `SESSION_SECRET`. Token perlu izin Pages, D1 aplikasi, dan Workers
+Scripts/cron untuk deploy scheduler. CI menerapkan migrasi **DB aplikasi saja**,
+deploy Pages termasuk binding CHART_DB/AI, deploy scheduler, lalu menyamakan signing
+secret. Cron Trigger baru dapat membutuhkan beberapa menit untuk propagasi.
 
-Workflow CI menjalankan tes dan build. Workflow deploy membangun
-`dashboard/office.bundle.js` sebelum upload Cloudflare Pages. Untuk deploy
-manual, jalankan `npm run build` sebelum `wrangler pages deploy dashboard`.
-Bundle Three.js disajikan lokal, tanpa CDN saat runtime.
+Deploy manual:
 
-Implementasi teknis dari **PRD v1.2 Final (AI Worker Revision)**. Aplikasi personal untuk memperoleh second opinion dari **6 model AI** (via satu binding external AI providers) terhadap kondisi **BTCUSDT perpetual M5**, dengan voting BUY/SELL/NO_TRADE dan histori 365 hari.
-
-> Tidak ada eksekusi order otomatis. Hasil AI murni bahan informasi (lihat PRD Bagian 3 & 40).
-
-Aplikasi ini dilindungi oleh **login dengan satu password bersama** (lihat Bagian 4) - seluruh dashboard dan endpoint `/api/*` mengharuskan sesi yang valid (kecuali `/api/ingest`, yang memakai `INGEST_SECRET`).
-
----
-
-## 1. Arsitektur
-
-```text
-User -> [LOGIN] -> session cookie -> [MULAI ANALISIS] -> POST /api/analyze
-                                            |
-                                  Run guards (cooldown + once-per-candle)
-                                            |
-                          Market Provider (src/market/provider.js)
-            live M5: Binance -> fallback Bybit -> fallback OKX -> fallback snapshot live_ticker (D1, bila terisi)
-            history M15/H1/H4/D1: D1 `candles` cache -> backfill dari exchange bila kurang/stale
-                                            |
-                          Prompt Builder (compact, versioned, indikator server-side)
-                                            |
-                          AI Adapters (semua model aktif, paralel)
-        Semua provider/model yang aktif di Settings
-                                            |
-                          Normalizer -> Voting Engine
-                                            |
-                          D1 (analyses + analysis_results)
-                                            |
-                          JSON response -> Dashboard
+```sh
+npx wrangler pages deploy dashboard --project-name=byga-ai-multivote
+npx wrangler deploy --config wrangler.scheduler.toml
+npx wrangler secret put SESSION_SECRET --config wrangler.scheduler.toml
 ```
 
-Data market memakai **API publik** exchange (tanpa API key). Data M5 live diambil tiap run dan langsung masuk prompt; hanya data histori (M15/H1/H4/D1) yang di-cache di D1.
-
-Semua model dipanggil server-side melalui HTTPS API adapter. API key disimpan sebagai Cloudflare Pages secrets; tidak ada browser automation. Lihat PRD Bagian 4, 10, 11.
-
-Setiap request - halaman dashboard maupun `/api/*` - melewati `functions/_middleware.js` terlebih dahulu, yang menolak apa pun tanpa session cookie yang valid (lihat Bagian 4).
-
-## 2. Struktur Proyek
-
-```text
-dashboard/            # Static frontend (vanilla JS SPA, mobile-first)
-  index.html app.js login.html login.js styles.css
-src/
-  orchestrator/        # analysis.js (main flow), voting.js, normalizer.js, select-providers.js
-  market/              # provider.js (rantai exchange), binance.js, bybit.js, okx.js, history.js (MTF cache),
-                       # candleStore.js (tabel candles), liveSnapshotStore.js (tabel live_ticker)
-  prompt/              # builder.js (prompt compact, versioned, indikator + key levels)
-  providers/           # 6 AI adapters + shared base.js + registry.js
-  lib/                 # id.js, storage.js (D1 access layer), auth.js, loginAttempts.js
-functions/
-  _middleware.js       # Login gate - dijalankan untuk semua request
-  api/
-    login.js logout.js # POST /api/login, POST /api/logout
-    analyze.js         # POST /api/analyze (+ run guards)
-    history.js         # GET  /api/history
-    analysis/[id].js   # GET  /api/analysis/:id
-    cleanup.js         # POST /api/cleanup (retention)
-    ingest.js          # POST /api/ingest (menerima snapshot live, auth INGEST_SECRET; tanpa pemanggil otomatis)
-migrations/
-  0001_initial.sql               # analyses, analysis_results
-  0002_add_login_attempts.sql    # login_attempts (rate limit)
-  0003_candles.sql               # cache candle historis MTF
-  0004_live_ticker.sql           # snapshot live (fallback saat 403)
-.github/workflows/
-  ci.yml                         # unit test sebelum deploy Cloudflare Pages
-docs/                            # PRD, PROVIDERS.md, SETTINGS.md
-tests/                           # vitest (lihat Bagian 5)
-wrangler.toml                    # [ai] binding, [[d1_databases]], vars
-```
-
-## 3. Setup
-
-### Prasyarat
-- Akun Cloudflare dengan **external AI providers** dan **D1** diaktifkan.
-- Node.js 18+, `npm i -g wrangler` (atau pakai `npx wrangler`).
-
-### Langkah instalasi
-
-```bash
-cd byga-ai-multivote
-npm install
-```
-
-### 1) Buat database D1 BARU
-
-Database lama tidak digunakan oleh proyek ini. Buat database baru khusus `byga-ai-multivote`:
-
-```bash
-npm run db:create
-```
-
-Salin `database_id` yang muncul ke `wrangler.toml`, menggantikan `REPLACE_WITH_NEW_D1_DATABASE_ID`.
-
-### 2) Jalankan migration
-
-```bash
-npm run db:migrate:local     # untuk dev lokal
-npm run db:migrate:remote    # untuk database production di Cloudflare
-```
-
-Menjalankan `0001` sampai `0004` (schema analisis, rate limit login, cache candle, snapshot live).
-
-### 3) External AI provider adapter
-
-Proyek ini **tidak menggunakan Cloudflare Workers AI**. Voting memakai HTTPS API dari provider eksternal. API key disimpan sebagai Cloudflare Pages Secrets, bukan di `wrangler.toml`.
-
-Provider yang didukung:
-- Google Gemini API
-- Groq
-- OpenRouter
-- Mistral AI
-- Hugging Face
-- Cohere
-- NVIDIA API Catalog
-- SambaNova Cloud
-- Vercel AI Gateway
-
-Lihat `docs/EXTERNAL_AI_SETUP.md` untuk nama secret dan konfigurasi masing-masing provider.
-
-### 4) Konfigurasi login (wajib)
-
-Lihat Bagian 4 - set `APP_PASSWORD` dan `SESSION_SECRET` sebelum menjalankan `npm run dev` atau deploy, kalau tidak semua request akan ditolak dengan `AUTH_NOT_CONFIGURED`.
-
-### 5) Jalankan lokal
-
-```bash
-npm run dev
-```
-
-Buka `http://localhost:8788` (default port `wrangler pages dev`). Kamu akan diarahkan ke `/login` dulu.
-
-### 6) Deploy
-
-```bash
-npx wrangler pages project create byga-ai-multivote
-npm run deploy
-```
-
-Setelah deploy pertama, cek di dashboard Cloudflare Pages -> **Settings -> Functions** bahwa binding **D1 (`DB`)** dan **external AI providers (`AI`)** ter-attach, serta secret `APP_PASSWORD` dan `SESSION_SECRET` sudah di-set untuk production.
-
-## 4. Login
-
-Aplikasi ini single-user (PRD Bagian 3), jadi login-nya sengaja sederhana: **satu password bersama**, bukan sistem akun. Diimplementasikan di:
-
-- `functions/_middleware.js` - gerbang global. Berjalan untuk *setiap* request, kecuali `/login`, `/login.html`, `/api/login`, dan `styles.css`. Tanpa session cookie yang valid: halaman di-redirect ke `/login`, `/api/*` dibalas `401`.
-- `functions/api/login.js` - cocokkan password terhadap `env.APP_PASSWORD` (constant-time compare), lalu set cookie sesi yang ditandatangani (HMAC-SHA256, `HttpOnly; Secure; SameSite=Strict`, berlaku 30 hari).
-- `functions/api/logout.js` - hapus cookie sesi.
-- `src/lib/auth.js` - pembuatan/verifikasi token sesi (stateless).
-- `src/lib/loginAttempts.js` + tabel `login_attempts` (migration `0002`) - mengunci satu IP selama 15 menit setelah 5 kali gagal berturut-turut.
-
-### Set secret
-
-```bash
-npx wrangler pages secret put APP_PASSWORD
-npx wrangler pages secret put SESSION_SECRET   # string acak panjang, mis. openssl rand -base64 32
-```
-
-(atau `npm run secrets:setup`). Ulangi untuk setiap environment (production/preview) bila perlu.
-
-### Dev lokal
-
-```bash
-cp .dev.vars.example .dev.vars
-# lalu edit .dev.vars dan isi APP_PASSWORD / SESSION_SECRET
-```
-
-`.dev.vars` sudah ada di `.gitignore` - jangan pernah commit password/secret asli.
-
-### Mengganti password
-
-Set ulang `APP_PASSWORD` dengan `wrangler pages secret put APP_PASSWORD`. Sesi yang sudah aktif tetap valid sampai cookie habis atau logout manual. Ganti juga `SESSION_SECRET` untuk memaksa semua sesi lama invalid.
-
-## 5. Testing
-
-```bash
-npm test
-```
-
-CI (`.github/workflows/ci.yml`) menjalankan test yang sama sebelum deploy. Cakupan:
-- `voting.test.js` - majority rule, tie -> NO_TRADE, partial failure, vote share.
-- `parser.test.js` - parsing `SIGNAL:`/`REASON:`, fallback loose match, ambiguous tidak dipaksa jadi BUY/SELL.
-- `market.test.js` - Binance sukses, gagal -> fallback Bybit, keduanya gagal -> `MarketDataError`.
-- `okx.test.js` - pemetaan simbol/timeframe OKX, normalisasi data, dan rantai fallback Binance -> Bybit -> OKX.
-- `prompt.test.js` - cap candle per timeframe, encoding compact `[k,o,h,l,c,v]`, ukuran payload, indikator (EMA/RSI/ATR/swing), key levels, definisi horizon dan NO_TRADE, ringkasan sinyal (total saja), versi prompt.
-- `analyze-guard.test.js` - cooldown dan once-per-candle di `POST /api/analyze`.
-- `auth.test.js` - token sesi (valid, salah secret, expired, tampered), constant-time compare, cookie dari `Request`.
-- `adapter.test.js`, `gemma-adapter.test.js`, `qwen-adapter.test.js`, `reasoning-models.test.js`, `select-providers.test.js` - adapter dan pemilihan model.
-
-Provider AI nyata (external AI providers) tidak di-mock karena butuh binding runtime asli - validasi end-to-end lewat POC manual (`npm run dev` lalu klik "Mulai Analisis").
-
-## 6. Menambah model AI ke-7
-
-Sesuai PRD Bagian 39 - tanpa mengubah orchestrator/voting/D1/dashboard core:
-
-1. Buat `src/providers/nama-model.js`, contoh isi lihat `src/providers/gemma3.js`.
-2. Export `meta` (provider key, label, model ID external AI providers, adapter version) dan `run({env, prompt, timeoutMs, maxRetries})` yang memanggil `runAdapter()` dari `base.js`.
-3. Tambahkan ke array `PROVIDERS` di `src/providers/registry.js`.
-4. Tambahkan id, glyph, dan label di `MODEL_ORDER` / `MODEL_GLYPHS` / `MODEL_LABELS` pada `dashboard/app.js`. Id di dashboard harus sama dengan `meta.provider` di backend.
-
-## 7. Scheduled cleanup (opsional)
-
-Retention 365 hari (PRD Bagian 25) dijalankan **opportunistically** setelah setiap `/api/analyze` (lewat `waitUntil`), dan bisa dipicu manual lewat `POST /api/cleanup` (di balik login gate). Pages Functions tidak mendukung Cron Trigger langsung; kalau ingin cleanup harian independen, perlu Worker terpisah dengan `[triggers] crons` yang memanggil endpoint tersebut atau mengakses D1 yang sama.
-
-## 8. Konfigurasi (PRD Bagian 41)
-
-Semua ada di `[vars]` pada `wrangler.toml`: exchange primer/fallback, symbol, timeframe, jumlah candle, versi prompt, timeout AI, max retry, retention, hari histori per timeframe, dan run guard (Bagian 10). `FALLBACK_EXCHANGE` boleh satu nama atau daftar dipisah koma yang dicoba berurutan setelah exchange primer (`binance` | `bybit` | `okx`), contoh `"bybit,okx"`. Model AI dikonfigurasi lewat `src/providers/registry.js`, bukan env var. Kredensial (`APP_PASSWORD`, `SESSION_SECRET`) adalah **secret**, bukan `[vars]`.
-
-## 9. Non-Goals (PRD Bagian 3)
-
-Tidak ada di aplikasi ini, dan sengaja tidak ditambahkan: eksekusi order otomatis, auto trading, copy trading, position management, SL/TP otomatis, leverage management, jaminan akurasi sinyal, layanan multi-user publik (login satu password ini bukan sistem akun).
-
-## 10. Catatan biaya
-
-Setiap analisis mengirim **satu prompt yang sama ke semua model aktif yang dipilih**, paralel. Adaptive routing tidak lagi memangkas voter utama; fallback hanya dipakai untuk pemulihan bila voter gagal. Biaya input kira-kira `ukuran prompt x jumlah model`, dan model reasoning (DeepSeek R1 Distill, Qwen3) cenderung lebih lambat/mahal per request (PRD Bagian 11).
-
-Penghemat yang sudah aktif:
-
-- **Prompt compact (sejak v1.8.0):** candle dikirim sebagai baris `[k,o,h,l,c,v]` (bukan object per candle), harga/volume dibulatkan 1 desimal, tanpa flag `closed` dan timestamp panjang.
-- **Cap candle kecil:** M5 32, M15 12, H1 8, H4 6, D1 14. Statistik dan indikator tetap dihitung dari seluruh window.
-- **Ringkasan sinyal lama = total saja** (`buy_days`, `sell_days`, `no_trade_days`), tanpa breakdown per hari.
-- **Run guard di `POST /api/analyze`** (dibandingkan dengan analisis tersimpan terakhir; run yang gagal tidak tersimpan sehingga tidak memblokir):
-  - `ANALYZE_COOLDOWN_SECONDS` (default `60`): jeda minimum antar run, `0` untuk mematikan.
-  - `ANALYZE_ONCE_PER_CANDLE` (default `1`): tolak run kedua di candle `TIMEFRAME` yang sama karena prompt-nya identik, `0` untuk mematikan. Respons `429` dengan `error_code: COOLDOWN_ACTIVE` dan `retry_after_seconds`.
-- **Kurangi model aktif** lewat halaman **Pengaturan** di dashboard (dikirim ke backend sebagai `{ models: [...] }`).
-
-Prompt v1.9.0 menambahkan indikator (EMA20/50, RSI14, ATR14, swing pivot, posisi dalam range, VWAP M5) dan `key_levels` yang dihitung di server, sehingga ukuran prompt naik sekitar 10% dibanding v1.8.0 (sebagian besar dari blok indikator per timeframe).
-
-## 11. Current quality baseline
-
-- Prompt version: **1.14.0** (compact candle encoding + deterministic ICT context + indicators + key levels).
-- Horizon sinyal: **1-4 jam ke depan** (12-48 candle M5), dengan kriteria eksplisit BUY/SELL vs NO_TRADE di prompt.
-- ICT structure engine: **1.0.0**, server-side BOS/CHOCH/MSS, liquidity sweeps, EQH/EQL, FVG, order blocks, displacement, premium/discount, and M5 session/killzone context.
-- Market schema version: **1.4.0**.
-- Market routing: **Binance Futures primary -> Bybit Linear fallback -> OKX Swap fallback**.
-- Historical context: **M15 4d, H1 30d, H4 180d, D1 365d**, di-cache di D1 (`candles`).
-- Raw prompt candle caps: M5 60, M15 32, H1 48, H4 42, D1 30.
-- Ringkasan sinyal historis di prompt: total hari BUY/SELL/NO_TRADE saja (window penuh).
-- ICT context is computed once server-side and passed identically to all active AI voters; indicators and derivatives remain secondary context.
-- Model selection dari Settings dikirim ke backend; minimal satu model harus aktif.
-- CI menjalankan unit test sebelum deployment Cloudflare Pages.
-- Tidak ada eksekusi order otomatis.
-
-## 12. Validation roadmap
-
-Lapisan riset berikutnya adalah signal outcome tracking dan historical replay/backtesting. Keduanya sengaja dipisah dari weighted voting engine agar pembuatan sinyal bisa dievaluasi tanpa memperkenalkan auto trading.
-
-## External AI providers
-
-Aktif: Google Gemini API, Groq, OpenRouter, Mistral AI, Hugging Face, Cohere, NVIDIA API Catalog, SambaNova Cloud, dan Vercel AI Gateway. Semua key disimpan sebagai secrets. Model dapat diganti melalui `wrangler.toml` tanpa mengubah kode adapter.
-
-### Secrets
-
-```bash
-npx wrangler pages secret put GEMINI_API_KEY
-npx wrangler pages secret put GROQ_API_KEY
-npx wrangler pages secret put OPENROUTER_API_KEY
-npx wrangler pages secret put MISTRAL_API_KEY
-npx wrangler pages secret put HF_TOKEN
-npx wrangler pages secret put COHERE_API_KEY
-npx wrangler pages secret put NVIDIA_API_KEY
-npx wrangler pages secret put SAMBANOVA_API_KEY
-npx wrangler pages secret put AI_GATEWAY_API_KEY
-```
-
-### 13. Voting dan routing
-
-Voting menghitung vote mentah BUY/SELL/NO_TRADE dan weighted vote. Jika model mengirim confidence, bobotnya dibatasi ke rentang 0.5-1.0; confidence yang tidak tersedia tetap berbobot 1. Bobot eksplisit per provider dapat diberikan melalui argumen `weights` pada `computeVoting()`. Hasil akhir hanya menjadi BUY/SELL bila satu sinyal memiliki weighted score tertinggi secara unik; tie menjadi NO_TRADE.
-
-Semua model aktif/terpilih ikut primary vote. Adaptive routing tetap digunakan untuk recovery: provider backup hanya dipanggil ketika primary gagal atau hasil valid tidak tersedia. Dengan demikian jumlah voter yang ditampilkan selalu sesuai jumlah model yang benar-benar dipanggil.
+Binding aplikasi: `DB` → byga-ai-multivote-db, `CHART_DB` → chart_db, `AI` → Workers AI.
+Cloudflare D1 binding tidak menawarkan flag read only per database; jaminan aplikasi
+diberikan melalui adapter SELECT-only dan pengujian yang menolak operasi tulis.
+
+## API
+
+| Endpoint | Fungsi |
+| --- | --- |
+| GET /api/market | Candle tervalidasi dan parameter untuk perhitungan browser tanpa AI |
+| GET/PUT /api/settings | Parameter, enam karakter, toggle cron/Discord, status webhook |
+| POST /api/analyze | Hitung ulang server, validasi candle preview, gate, enam vote, outbox |
+| GET /api/status | Run terbaru dan jumlah antrean Discord untuk pemantauan UI |
+| GET /api/history | Histori baru serta legacy, termasuk pemeriksaan tersaring |
+| GET /api/analysis/:id | Snapshot kelompok dan hasil vote lengkap |
+| POST /api/cron | Jalur scheduler dengan HMAC; bukan endpoint publik untuk memicu AI |
+
+Status run: `filtered` (tanpa AI), `approved` (≥4/6 searah), `rejected` (dukungan
+kurang), `running`, atau `failed`. NETRAL hanya untuk gate deterministik; vote AI
+tetap BUY/SELL. Kolom legacy `majority_signal` menyimpan NO_TRADE ketika belum ada
+keputusan disetujui; API baru menampilkan keputusan tersebut sebagai null, dengan
+status dan alasan eksplisit.
+
+Kualitas grafis Auto/50%/75%/100% tetap tersedia dan tersimpan pada perangkat.
+Gerakan berjalan dipertahankan; pengujian screenshot memakai pause tab latar
+belakang lalu melanjutkan pose yang sama. Kinerja pada HP fisik belum diukur.
+Tidak ada eksekusi order trading otomatis.

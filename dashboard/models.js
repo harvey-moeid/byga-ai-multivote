@@ -1,128 +1,56 @@
-(function () {
-  if (window.__modelsUi) return;
-  window.__modelsUi = true;
-
-  const h = (tag, props, ...kids) => {
-    const el = document.createElement(tag);
-    for (const [k, v] of Object.entries(props || {})) {
-      if (k === 'class') el.className = v;
-      else if (k === 'text') el.textContent = v;
-      else if (k === 'checked') el.checked = !!v;
-      else if (k === 'value') el.value = v;
-      else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
-      else if (v != null && v !== false) el.setAttribute(k, v === true ? '' : v);
+const h=(tag,props={},...children)=>{
+  const el=document.createElement(tag);
+  for(const [k,v] of Object.entries(props)){if(k==='text')el.textContent=v;else if(k==='class')el.className=v;else if(k==='checked')el.checked=v;else if(k==='value')el.value=v;else el.setAttribute(k,v);}
+  el.append(...children.flat());return el;
+};
+const descriptions={candleLimit:'Jumlah candle per timeframe',swing:'Radius pivot terkonfirmasi',range:'Rentang dealing range',eventWindow:'Jendela event terbaru',atrPeriod:'Periode ATR',displacement:'Displacement minimum × ATR',fvgAtr:'Ukuran FVG minimum × ATR',threshold:'Minimum konfirmasi searah',emaFast:'EMA cepat',emaSlow:'EMA lambat',rsiPeriod:'Periode RSI',rsiBuy:'RSI minimum BUY',rsiSell:'RSI maksimum SELL',macdFast:'MACD cepat',macdSlow:'MACD lambat',macdSignal:'MACD signal',bbPeriod:'Periode Bollinger',bbStd:'Deviasi Bollinger',adxPeriod:'Periode ADX',adxMin:'ADX minimum',period:'Periode CMF / baseline volume',rvolMin:'RVOL minimum',cmfMin:'CMF minimum absolut',obvLookback:'Jendela perubahan OBV'};
+export async function openSettings(onSaved) {
+  if(document.getElementById('pipeline-settings'))return;
+  const body=h('div',{class:'pipeline-settings-body'},'Memuat pengaturan…'),close=h('button',{type:'button',class:'detail-close',text:'Tutup'});
+  const wrap=h('div',{id:'pipeline-settings',class:'detail-modal'},h('section',{class:'detail-card pipeline-settings-card',role:'dialog','aria-modal':'true','aria-label':'Pengaturan pipeline'},h('div',{class:'detail-head'},h('h2',{text:'Pengaturan pipeline'}),close),body));
+  const restore=document.activeElement;
+  const dismiss=()=>{wrap.remove();restore?.focus();};close.addEventListener('click',dismiss);wrap.addEventListener('click',e=>{if(e.target===wrap)dismiss();});
+  wrap.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();dismiss();}if(e.key==='Tab'){const els=[...wrap.querySelectorAll('button,input,select')].filter(el=>!el.disabled),first=els[0],last=els.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}});
+  document.body.append(wrap);close.focus();
+  try {
+    const res=await fetch('/api/settings'),data=await res.json();if(!res.ok)throw Error(data.error||'Pengaturan tidak tersedia.');
+    const s=structuredClone(data.settings),fields=[];
+    body.replaceChildren(h('p',{text:'BTCUSDT.P · candle tertutup · chart_db read only. Meeting: 2/3 kelompok sepakat. Discord: minimal 4/6 vote mendukung arah awal.'}));
+    const section=(title)=>{const details=h('details',{class:'settings-section',open:''},h('summary',{text:title}));body.append(details);return details;};
+    const frameSection=section('Timeframe dan perhitungan');
+    for(const [role,label] of [['trend','Tren'],['structure','Struktur'],['trigger','Pemicu']]) {
+      const select=h('select',{'aria-label':'Timeframe '+label},...['H4','H1','M15','M5','D1'].map(tf=>h('option',{value:tf,text:tf})));select.value=s.calculation.frames[role];
+      frameSection.append(h('label',{},h('span',{text:label}),select));fields.push(()=>{s.calculation.frames[role]=select.value;});
     }
-    for (const kid of kids.flat()) if (kid != null) el.append(kid);
-    return el;
-  };
-
-  const style = document.createElement('style');
-  style.textContent = `
-.mdl-card{max-width:720px;width:calc(100% - 24px)}
-.mdl-body{max-height:70vh;overflow:auto;padding-right:4px}
-.mdl-hint{margin:0 0 6px;opacity:.65;font-size:13px}
-.mdl-row{display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:center;padding:12px 0;border-top:1px solid rgba(255,255,255,.08)}
-.mdl-toggle{display:flex;align-items:center;gap:10px;cursor:pointer}
-.mdl-key{font-size:10px;letter-spacing:.08em;font-family:'DM Mono',monospace}
-.mdl-key.ok{color:#3ddc97}.mdl-key.no{color:#ff6b6b}
-.mdl-input{grid-column:1/-1;width:100%;box-sizing:border-box;padding:9px 11px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:inherit;font:13px 'DM Mono',monospace}
-.mdl-input:focus{outline:none;border-color:#6ea8ff}
-.mdl-def{grid-column:1/-1;opacity:.5;font-size:11px;font-family:'DM Mono',monospace}
-.mdl-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding-top:14px;border-top:1px solid rgba(255,255,255,.08)}
-.mdl-msg{margin-right:auto;font-size:12px;opacity:.8}
-.mdl-msg.ok{color:#3ddc97;opacity:1}.mdl-msg.err{color:#ff6b6b;opacity:1}
-.mdl-btn{padding:9px 16px;border-radius:8px;border:1px solid rgba(255,255,255,.16);background:transparent;color:inherit;font-weight:600;font-size:13px;font-family:inherit;cursor:pointer}
-.mdl-btn.primary{background:#6ea8ff;border-color:#6ea8ff;color:#08101f}
-.mdl-btn:disabled{opacity:.5;cursor:default}
-.top-actions #models-btn{margin-right:8px}
-.mdl-float{position:fixed;right:12px;bottom:12px;z-index:50}
-`;
-  document.head.append(style);
-
-  function render(body, items) {
-    const rows = items.map(it => {
-      const cb = h('input', { type: 'checkbox', checked: it.enabled });
-      const input = h('input', { class: 'mdl-input', type: 'text', value: it.model, placeholder: it.default_model, spellcheck: 'false', autocomplete: 'off' });
-      const row = h('div', { class: 'mdl-row' },
-        h('label', { class: 'mdl-toggle' }, cb, h('b', { text: it.label })),
-        h('span', { class: 'mdl-key ' + (it.key_configured ? 'ok' : 'no'), text: it.key_configured ? 'API KEY OK' : 'API KEY BELUM ADA' }),
-        input,
-        h('small', { class: 'mdl-def', text: 'Default: ' + it.default_model }));
-      return { it, cb, input, row };
+    function numberField(parent,obj,key,prefix='') {
+      const input=h('input',{type:'number',value:obj[key],step:Number.isInteger(obj[key])&&!['displacement','bbStd','rvolMin','fvgAtr','cmfMin'].includes(key)?'1':'0.01',required:'','aria-label':prefix+descriptions[key]});
+      parent.append(h('label',{},h('span',{text:descriptions[key]}),input));fields.push(()=>{obj[key]=Number(input.value);});
+    }
+    numberField(frameSection,s.calculation,'candleLimit');
+    for(const [key,label] of [['smc','SMC / ICT'],['indicators','Indikator'],['volume','Volume']]){const box=section(label);for(const k of Object.keys(s.calculation[key]))numberField(box,s.calculation[key],k,label+' ');}
+    const team=section('Enam karakter · provider dan model');
+    s.analysts.forEach((a,i)=>{
+      const name=h('input',{value:a.name,maxlength:'40','aria-label':'Nama analis '+(i+1)});
+      const provider=h('select',{'aria-label':'Provider analis '+(i+1)},...data.providers.map(p=>h('option',{value:p.provider,text:p.label+(p.configured?'':' · belum aktif')})));provider.value=a.provider;
+      const model=h('input',{value:a.model,'aria-label':'Model analis '+(i+1),maxlength:'120'});
+      const row=h('div',{class:'analyst-settings'},h('b',{text:['SMC/ICT','Indikator','Volume'][Math.floor(i/2)]+' · '+(i%2+1)}),name,provider,model);
+      provider.addEventListener('change',()=>{model.value=data.providers.find(p=>p.provider===provider.value).default_model;});team.append(row);
+      fields.push(()=>{a.name=name.value;a.provider=provider.value;a.model=model.value;});
     });
-    const msg = h('span', { class: 'mdl-msg' });
-    const save = h('button', { class: 'mdl-btn primary', type: 'button', text: 'Simpan' });
-    const reset = h('button', { class: 'mdl-btn', type: 'button', text: 'Reset ke default' });
-
-    reset.addEventListener('click', () => {
-      rows.forEach(r => { r.input.value = r.it.default_model; r.cb.checked = true; });
-      msg.className = 'mdl-msg';
-      msg.textContent = 'Belum disimpan.';
-    });
-
-    save.addEventListener('click', async () => {
-      // Mirrors the server rule in functions/api/models.js: at least one enabled
-      // provider must have an API key, otherwise every analysis run would fail.
-      // The server still enforces it; this check only gives instant feedback.
-      if (!rows.some(r => r.cb.checked && r.it.key_configured)) {
-        msg.className = 'mdl-msg err';
-        msg.textContent = 'Minimal satu model aktif yang sudah punya API key.';
-        return;
-      }
-      const settings = {};
-      for (const r of rows) {
-        const model = r.input.value.trim();
-        settings[r.it.provider] = { model: model && model !== r.it.default_model ? model : '', enabled: r.cb.checked };
-      }
-      save.disabled = true;
-      msg.className = 'mdl-msg';
-      msg.textContent = 'Menyimpan...';
+    const automation=section('Cron dan Discord');
+    for(const [key,label] of [['cronEnabled','Pemeriksaan otomatis setiap 5 menit'],['discordEnabled','Kirim hasil yang disetujui ke Discord']]) {
+      const cb=h('input',{type:'checkbox',checked:s[key]});automation.append(h('label',{class:'settings-toggle'},cb,h('span',{text:label})));fields.push(()=>{s[key]=cb.checked;});
+    }
+    const webhook=h('input',{type:'password',autocomplete:'new-password',placeholder:data.webhook_configured?'Webhook tersimpan · kosongkan untuk mempertahankan':'https://discord.com/api/webhooks/…','aria-label':'Webhook Discord'});
+    const clear=h('input',{type:'checkbox'});automation.append(h('p',{text:'Webhook disimpan terenkripsi dan tidak ditampilkan kembali.'}),webhook,h('label',{class:'settings-toggle'},clear,h('span',{text:'Hapus webhook yang disimpan dari web'})));
+    const msg=h('p',{role:'status'}),save=h('button',{type:'button',class:'office-run',text:'Simpan pengaturan'});
+    body.append(msg,save);
+    save.addEventListener('click',async()=>{
+      fields.forEach(fn=>fn());save.disabled=true;msg.textContent='Menyimpan…';
       try {
-        const res = await fetch('/api/models', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ settings }) });
-        const d = await res.json();
-        if (!res.ok) throw new Error(d.error || 'HTTP ' + res.status);
-        msg.className = 'mdl-msg ok';
-        msg.textContent = 'Tersimpan. Berlaku di analisis berikutnya.';
-        window.dispatchEvent(new Event('models:updated'));
-      } catch (e) {
-        msg.className = 'mdl-msg err';
-        msg.textContent = e.message || 'Gagal menyimpan.';
-      } finally {
-        save.disabled = false;
-      }
+        const res=await fetch('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({settings:s,discord_webhook:webhook.value,clear_webhook:clear.checked})}),d=await res.json();
+        if(!res.ok)throw Error(d.error||'Gagal menyimpan.');webhook.value='';msg.textContent='Tersimpan. Berlaku pada candle berikutnya.';await onSaved();
+      }catch(e){msg.textContent=e.message;}finally{save.disabled=false;}
     });
-
-    body.replaceChildren(
-      h('p', { class: 'mdl-hint', text: 'Ganti nama model tiap provider atau nonaktifkan. Perubahan berlaku mulai analisis berikutnya.' }),
-      ...rows.map(r => r.row),
-      h('div', { class: 'mdl-actions' }, msg, reset, save)
-    );
-  }
-
-  async function openModal() {
-    const body = h('div', { class: 'mdl-body' }, 'Memuat...');
-    const closeBtn = h('button', { class: 'detail-close', type: 'button', text: 'Close' });
-    const wrap = h('div', { class: 'detail-modal' },
-      h('section', { class: 'detail-card mdl-card' },
-        h('div', { class: 'detail-head' }, h('h2', { text: 'Model AI' }), closeBtn),
-        body));
-    closeBtn.addEventListener('click', () => wrap.remove());
-    wrap.addEventListener('click', e => { if (e.target === wrap) wrap.remove(); });
-    document.body.append(wrap);
-    try {
-      const res = await fetch('/api/models');
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
-      render(body, data.items || []);
-    } catch (e) {
-      body.textContent = 'Gagal memuat: ' + (e.message || e);
-    }
-  }
-
-  const btn = h('button', { id: 'models-btn', class: 'logout-btn', type: 'button', 'aria-label': 'Model AI', text: 'Models' });
-  btn.addEventListener('click', openModal);
-  const actions = document.querySelector('.top-actions');
-  const logout = document.getElementById('logout-btn');
-  if (actions) actions.insertBefore(btn, logout && logout.parentNode === actions ? logout : null);
-  else { btn.classList.add('mdl-float'); document.body.append(btn); }
-})();
+  }catch(e){body.textContent=e.message;}
+}

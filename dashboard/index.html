@@ -7,7 +7,7 @@
 </head>
 <body class="office-app">
 <header class="office-header">
-  <a href="/" class="office-brand" aria-label="BYGA Trading Office"><span class="brand-monogram">BG</span><span><b>BYGA <span>TRADING OFFICE</span></b><small>AI MULTI-VOTE · BTCUSDT</small></span></a>
+  <a href="/" class="office-brand" aria-label="BYGA Trading Office"><span class="brand-monogram">BG</span><span><b>BYGA <span>TRADING OFFICE</span></b><small>BTCUSDT.P · H1 / M15 / M5</small></span></a>
   <div class="top-actions"><label class="quality-control"><span>Kualitas</span><select id="quality" aria-label="Kualitas grafis"><option value="auto">Otomatis</option><option value="low">Hemat · 50%</option><option value="medium">Seimbang · 75%</option><option value="high">Tinggi · 100%</option></select></label><button id="logout-btn" class="office-icon" title="Keluar" aria-label="Keluar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 5H5v14h4M13 8l4 4-4 4M9 12h11"/></svg></button></div>
 </header>
 <main id="office-stage" aria-label="Kantor trading 3D">
@@ -24,20 +24,21 @@
 </main>
 <footer class="office-dock">
   <div class="dock-market"><span class="market-code">BTC<span>USDT</span></span><b id="price">—</b><small id="price-change">Belum ada snapshot</small></div>
-  <button id="result-shortcut" class="dock-consensus" aria-label="Lihat hasil analisis"><small>KONSENSUS</small><b id="consensus">—</b><span id="responses">0</span><span id="responses-total"> / 12 vote</span></button>
-  <nav class="dock-nav" aria-label="Panel kantor"><button data-panel="providers">Analis</button><button data-panel="results">Hasil</button><button data-panel="history">Riwayat</button></nav>
+  <button id="result-shortcut" class="dock-consensus" aria-label="Lihat hasil analisis"><small>KONSENSUS</small><b id="consensus">—</b><span id="responses">0</span><span id="responses-total"> / 6 vote</span></button>
+  <nav class="dock-nav" aria-label="Panel kantor"><button data-panel="providers">Analis</button><button data-panel="results">Hasil</button><button data-panel="history">Riwayat</button><button id="settings-btn">Setting</button></nav>
   <button id="analyze-btn" class="office-run" disabled><svg viewBox="0 0 24 24" fill="currentColor"><path d="m8 5 11 7-11 7z"/></svg><span id="analyze-label">Mulai Analisis</span></button>
-  <div id="run-message" class="office-message" role="status">Memuat provider AI…</div>
+  <div id="run-message" class="office-message" role="status">Memuat perhitungan tanpa AI…</div>
 </footer>
 <dialog id="office-panel" class="office-panel">
   <header class="office-panel-head"><div><small>BYGA WORKSPACE</small><h2 id="panel-title">Tim analis</h2></div><button id="panel-close" class="office-icon" aria-label="Tutup panel" title="Tutup">×</button></header>
-  <section data-panel-content="providers"><div class="provider-picker-head"><b>Provider tugas</b><span id="provider-count">0/6 dipilih</span></div><div id="provider-options" class="office-providers">Memuat provider…</div><p id="provider-help">Pilih 6 provider untuk 12 vote.</p><p id="team-note">8 analis visual · 1 bos · 12 vote AI</p></section>
+  <section data-panel-content="providers"><div class="provider-picker-head"><b>Enam karakter analis</b><span id="provider-count">6 slot</span></div><div id="provider-options" class="office-providers">Memuat tim…</div><p id="provider-help">Dua analis SMC/ICT, dua indikator, dua volume. Provider boleh sama.</p><p id="team-note">6 analis AI · 1 bos pemimpin · 2 staf pendukung</p><button id="edit-analysts">Atur karakter dan model</button><p id="cron-status"></p></section>
   <section data-panel-content="results" hidden>
     <div class="result-summary"><span id="result-status">BELUM ADA HASIL</span><small id="last-updated">—</small><p id="consensus-note">Menunggu analisis pertama.</p></div>
-    <div class="result-stats"><span>BUY <b id="buy-count">0</b></span><span>SELL <b id="sell-count">0</b></span><span>Abstain <b id="neutral-count">0</b></span><span>Durasi <b id="duration">—</b><small id="duration-unit"></small></span></div>
+    <div id="snapshot-groups" class="snapshot-groups"></div><p id="gate-note"></p><p id="discord-status"></p>
+    <div class="result-stats"><span>BUY <b id="buy-count">0</b></span><span>SELL <b id="sell-count">0</b></span><span>Gagal <b id="neutral-count">0</b></span><span>Durasi <b id="duration">—</b><small id="duration-unit"></small></span></div>
     <div class="office-vote-bar"><i id="buy-bar"></i><i id="sell-bar"></i></div><span id="vote-total" hidden>0</span><div id="result-empty" class="office-empty">Belum ada hasil analisis.</div><div id="model-results" class="office-model-results"></div>
   </section>
   <section data-panel-content="history" hidden><div class="history-toolbar"><span>Waktu Indonesia Barat</span><button id="refresh-history">Refresh</button></div><div class="office-history-scroll"><table><thead><tr><th>ID</th><th>Waktu · WIB</th><th>Market</th><th>Sinyal</th><th>Vote</th><th></th></tr></thead><tbody id="history-body"><tr><td colspan="6">Memuat riwayat…</td></tr></tbody></table></div></section>
 </dialog>
-<script src="/app.js"></script><script type="module" src="/office.bundle.js"></script>
+<script type="module" src="/app.bundle.js"></script><script type="module" src="/office.bundle.js"></script>
 </body></html>

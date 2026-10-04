@@ -17,7 +17,6 @@ export const server = http.createServer(async (req, res) => {
   if (!path.startsWith(root.endsWith(sep) ? root : root + sep)) { res.writeHead(403); res.end(); return; }
   try {
     let data = await readFile(path);
-    if (path.endsWith('index.html')) data = data.toString().replace('</body>', '<script src="/models.js"></script></body>');
     res.writeHead(200, { 'content-type':types[extname(path)] || 'application/octet-stream', 'cache-control':'no-store' });
     res.end(data);
   } catch { res.writeHead(404); res.end('Not found'); }

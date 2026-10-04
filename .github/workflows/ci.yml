@@ -17,7 +17,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
       - name: Install dependencies
         run: npm ci
@@ -54,7 +54,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
       - name: Install dependencies
         run: npm ci
@@ -109,3 +109,11 @@ jobs:
 
       - name: Deploy to Cloudflare Pages
         run: npm run build && npx wrangler pages deploy dashboard --project-name=byga-ai-multivote
+
+      - name: Deploy five-minute scheduler
+        run: npx wrangler deploy --config wrangler.scheduler.toml
+
+      - name: Set scheduler signing secret
+        env:
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+        run: printf '%s' "$SESSION_SECRET" | npx wrangler secret put SESSION_SECRET --config wrangler.scheduler.toml
