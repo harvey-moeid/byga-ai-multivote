@@ -78,6 +78,15 @@ jobs:
                 continue
               fi
             fi
+            if [ "$f" = "migrations/0007_analysis_decision_reason.sql" ]; then
+              schema="$(npx wrangler d1 execute byga-ai-multivote-db --remote --command='PRAGMA table_info(analyses)' --json)"
+              has_column="$(printf '%s' "$schema" | node -e 'const data=JSON.parse(require("fs").readFileSync(0,"utf8")); if(!Array.isArray(data)||data.some(batch=>batch.success!==true||!Array.isArray(batch.results))) throw new Error("Invalid D1 schema response"); process.stdout.write(data.flatMap(batch=>batch.results).some(row=>row.name==="decision_reason")?"yes":"no");')"
+              if [ "$has_column" = "yes" ]; then
+                npx wrangler d1 execute byga-ai-multivote-db --remote --command='CREATE INDEX IF NOT EXISTS idx_analyses_decision_reason ON analyses (decision_reason)'
+                echo "0007 already applied; skipping ALTER TABLE."
+                continue
+              fi
+            fi
             npx wrangler d1 execute byga-ai-multivote-db --remote --file="$f"
           done
 

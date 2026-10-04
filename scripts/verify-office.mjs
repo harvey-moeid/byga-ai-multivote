@@ -21,6 +21,7 @@ let calls = [], mode = 'success';
 const errors = [];
 async function setup(viewport) {
   const page = await browser.newPage({viewport,deviceScaleFactor:1});
+  page.setDefaultTimeout(60000);
   page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/api/**', async route => {
     const request = route.request(), path = new URL(request.url()).pathname;
@@ -36,6 +37,25 @@ async function setup(viewport) {
   await page.waitForFunction(()=>!!window.bygaOffice,{timeout:30000});
   return page;
 }
+async function capture(page, filename) {
+  // Exercise the existing background-tab pause while the software GPU flushes
+  // a screenshot. Resume the same poses afterward; do not skip any movement.
+  const poses = await page.evaluate(() => {
+    Object.defineProperty(document,'hidden',{ configurable:true,get:()=>true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    return window.bygaOffice.state.actors.map(a=>[a.x,a.z]);
+  });
+  try {
+    const image = await page.screenshot({path:output+'/'+filename,timeout:120000});
+    assert.deepEqual(await page.evaluate(()=>window.bygaOffice.state.actors.map(a=>[a.x,a.z])),poses);
+    return image;
+  } finally {
+    await page.evaluate(() => {
+      delete document.hidden;
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+  }
+}
 async function phase(page, next, timeout=90000) {
   const trace=setInterval(async()=>{try{console.log('Waiting for',next,await page.evaluate(()=>window.bygaOffice.state))}catch{}},30000);
   try{await page.waitForFunction(p=>window.bygaOffice.state.phase===p,next,{timeout})}
@@ -47,7 +67,7 @@ try {
   await desktop.selectOption('#quality','high');
   await desktop.waitForTimeout(1500);
   assert.equal(await desktop.evaluate(()=>window.bygaOffice.state.actors.length),9);
-  const screenshot=await desktop.screenshot({path:output+'/desktop.png'});
+  const screenshot=await capture(desktop,'desktop.png');
   const png=PNG.sync.read(screenshot),pixels=new Set();
   for(let y=png.height/2-24;y<png.height/2+24;y++)for(let x=png.width/2-24;x<png.width/2+24;x++){
     const i=(Math.floor(y)*png.width+Math.floor(x))*4;pixels.add(png.data.slice(i,i+3).join(','));
@@ -69,7 +89,7 @@ try {
   assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   const canvasBox=await mobile.locator('#office-canvas canvas').boundingBox();
   assert(canvasBox.width>300 && canvasBox.height>400);
-  await mobile.screenshot({path:output+'/mobile.png'});
+  await capture(mobile,'mobile.png');
   const before=await mobile.evaluate(()=>window.bygaOffice.state.actors.map(a=>[a.x,a.z]));
   await mobile.click('#analyze-btn');
   console.log('Mobile analysis started.');
@@ -85,7 +105,7 @@ try {
   assert(gathered.actors.every(a=>a.arrived&&a.sitting>.95),'All nine participants must sit before discussion');
   assert.equal(await mobile.locator('#consensus').textContent(),'BUY');
   await mobile.waitForTimeout(1600);
-  await mobile.screenshot({path:output+'/meeting.png'});
+  await capture(mobile,'meeting.png');
   assert.equal(await mobile.locator('.office-speech').isVisible(),true);
   console.log('Meeting: all analysts and boss seated, actual API result shown.');
   await phase(mobile,'returning');
