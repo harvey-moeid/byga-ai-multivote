@@ -81,7 +81,7 @@ async function runManual() {
     const snapshot=await previewCalculation();
     message(snapshot.gate.meeting?'Pemicu '+snapshot.gate.direction+' terdeteksi. Meminta enam vote AI.':'Belum ada pemicu. Menyimpan hasil pemeriksaan tanpa panggilan AI.');
     const result=await api('/api/analyze',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({candle_times:snapshot.candle_times}),signal:AbortSignal.timeout(150000)});
-    lastSeen=result.id;renderAnalysis(result);void loadHistory();
+    if(result.snapshot){lastSeen=result.id;renderAnalysis(result);}void loadHistory();
     if(result.duplicate)message(result.status==='running'?'Candle ini sedang diproses cron. Hasil akan muncul otomatis.':'Candle ini sudah diperiksa. Tidak ada panggilan AI atau pengiriman Discord ulang.');
     else if(result.meeting){await playMeeting(result);return;}
     else message('Tidak ada dua kelompok sepakat. Analis tetap di meja.');
