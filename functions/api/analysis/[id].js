@@ -5,6 +5,7 @@
  */
 
 import { getAnalysisDetail } from "../../../src/lib/storage.js";
+import { refreshDelivery } from '../../../src/pipeline/discord.js';
 
 export async function onRequestGet(context) {
   const { env, params } = context;
@@ -12,7 +13,7 @@ export async function onRequestGet(context) {
 
   try {
     const pipeline = await env.DB.prepare('SELECT result FROM pipeline_runs WHERE id = ?').bind(id).first();
-    if (pipeline?.result) return json(200,JSON.parse(pipeline.result));
+    if (pipeline?.result) return json(200,await refreshDelivery(env,JSON.parse(pipeline.result)));
     const detail = await getAnalysisDetail(env.DB, id);
     if (!detail) {
       return json(404, { error_code: "NOT_FOUND", error: `Analysis ${id} not found.` });

@@ -33,18 +33,18 @@ function renderSnapshot(snapshot) {
 }
 function renderAnalysis(d) {
   if(d.snapshot)renderSnapshot(d.snapshot);
-  const v=d.voting||{},signal=d.majority_signal||'—';
+  const v=d.voting||{buy:d.buy_votes,sell:d.sell_votes,success:d.success_count,total_models:d.total_models,error:d.error_count},signal=d.majority_signal||'—';
   $('consensus').textContent=signal;$('consensus').className='metric-value signal-'+signal.toLowerCase();
-  $('consensus-note').textContent=d.status==='approved'?'Disetujui: '+v.support+'/6 mendukung arah awal '+d.initial_direction:d.status==='filtered'?'Tersaring sebelum AI: dua kelompok belum sepakat.':d.status==='rejected'?'Meeting selesai: dukungan '+v.support+'/6, belum mencapai 4.':'Menunggu hasil.';
+  $('consensus-note').textContent=d.status==='approved'?'Disetujui: '+v.support+'/6 mendukung arah awal '+d.initial_direction:d.status==='filtered'?'Tersaring sebelum AI: dua kelompok belum sepakat.':d.status==='rejected'?'Meeting selesai: dukungan '+v.support+'/6, belum mencapai 4.':!d.voting?'Histori alur sebelumnya.':'Menunggu hasil.';
   $('responses').textContent=v.success||0;$('responses-total').textContent=' / '+(v.total_models??6)+' vote';
   $('buy-count').textContent=v.buy||0;$('sell-count').textContent=v.sell||0;$('neutral-count').textContent=v.error||0;$('vote-total').textContent=v.total_models||0;
-  $('buy-bar').style.width=((v.buy||0)/6*100)+'%';$('sell-bar').style.width=((v.sell||0)/6*100)+'%';
+  $('buy-bar').style.width=((v.buy||0)/(v.total_models||6)*100)+'%';$('sell-bar').style.width=((v.sell||0)/(v.total_models||6)*100)+'%';
   $('duration').textContent=fmt((d.duration_ms||0)/1000);$('duration-unit').textContent=' sec';
   $('last-updated').textContent='WIB · '+date(d.created_at);$('result-status').textContent=({approved:'DISETUJUI',rejected:'BELUM DISETUJUI',filtered:'TERSARING'})[d.status]||'MEMPROSES';
   $('result-empty').classList.toggle('hidden',!!d.results?.length);
   $('result-empty').textContent=d.meeting?'Menunggu vote analis.':'Tidak ada panggilan AI pada pemeriksaan ini.';
   const delivery=d.delivery?.state;
-  $('discord-status').textContent=!v.approved?'Discord: tidak dikirim; syarat 4/6 belum terpenuhi.':delivery==='sent'?'Discord: terkirim.':delivery==='not_configured'?'Discord: webhook belum diatur.':delivery==='disabled'?'Discord: dinonaktifkan.':delivery==='pending'?'Discord: menunggu percobaan ulang.':'Discord: lihat status antrean.';
+  $('discord-status').textContent=!d.voting?'':!v.approved?'Discord: tidak dikirim; syarat 4/6 belum terpenuhi.':delivery==='sent'?'Discord: terkirim.':delivery==='not_configured'?'Discord: webhook belum diatur.':delivery==='disabled'?'Discord: dinonaktifkan.':delivery==='expired'?'Discord: sinyal kedaluwarsa sebelum terkirim.':delivery==='failed'?'Discord: pengiriman gagal; periksa webhook.':delivery==='pending'?'Discord: menunggu percobaan ulang.':'Discord: lihat status antrean.';
   $('model-results').innerHTML=(d.results||[]).map(r=>'<div class="model-row"><span class="model-avatar">'+escape((r.analyst_name||r.provider).slice(0,2))+'</span><span class="model-info"><b>'+escape(r.analyst_name||r.provider_label)+'</b><small>'+escape(labels[r.role]||r.role)+' · '+escape(r.provider_label)+' · '+escape(r.model||'')+'</small><em>'+escape(r.reason||r.error||'')+'</em></span><span class="signal-pill '+(r.signal||'error').toLowerCase()+'">'+escape(r.status==='success'?r.signal:'ERROR')+'</span></div>').join('');
 }
 async function loadSettings() {

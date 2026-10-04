@@ -2,7 +2,7 @@ import { describe,it,expect,vi,afterEach } from 'vitest';
 import { calculateSnapshot,groupConsensus,meetingDecision,combineFrames,rsi,ema,adx,volumeFrame,smcFrame } from '../src/pipeline/calculate.js';
 import { defaultSettings,validateSettings } from '../src/pipeline/config.js';
 import { readChart } from '../src/pipeline/chart.js';
-import { runPipeline,callAnalyst,analystPrompt } from '../src/pipeline/run.js';
+import { runPipeline,callAnalyst,analystPrompt,pipelineStatus } from '../src/pipeline/run.js';
 import { sealWebhook,openWebhook,verifyCron,cronSignature,flushDiscord } from '../src/pipeline/discord.js';
 import { onRequestPost } from '../functions/api/analyze.js';
 import { onRequestGet,onRequestPut } from '../functions/api/settings.js';
@@ -129,6 +129,8 @@ describe('settings, authentication, and Discord delivery',()=>{
     const ai=vi.spyOn(env.AI,'run'),f=vi.fn().mockResolvedValueOnce(new Response('',{status:429,headers:{'retry-after':'2'}})).mockResolvedValue(new Response('{}',{status:200}));vi.stubGlobal('fetch',f);
     await runPipeline(env);expect(db.prepare('SELECT state FROM discord_outbox').get().state).toBe('pending');
     db.exec('UPDATE discord_outbox SET next_attempt=0');await flushDiscord(env);expect(ai).toHaveBeenCalledTimes(6);expect(f).toHaveBeenCalledTimes(2);
+    expect((await pipelineStatus(env)).latest.result.delivery.state).toBe('sent');
+    expect((await runPipeline(env)).delivery.state).toBe('sent');
   });
   it('does not enqueue or send an opposing majority or a three-three tie',async()=>{
     const {env,db}=use();env.DISCORD_WEBHOOK_URL='https://discord.com/api/webhooks/123/test_token';

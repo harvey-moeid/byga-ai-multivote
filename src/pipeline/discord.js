@@ -26,6 +26,12 @@ export async function webhookConfigured(env) {
   if(env.DISCORD_WEBHOOK_URL)return true;
   return !!(await env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind('discord_webhook_encrypted').first())?.value;
 }
+export async function refreshDelivery(env,result) {
+  if(!result?.voting?.approved)return result;
+  const row=await env.DB.prepare('SELECT state FROM discord_outbox WHERE analysis_id=?').bind(result.id).first();
+  if(row&&['sent','expired','failed'].includes(row.state))result.delivery={...result.delivery,state:row.state};
+  return result;
+}
 async function webhook(env) {
   if(env.DISCORD_WEBHOOK_URL)return validateWebhook(env.DISCORD_WEBHOOK_URL);
   const row=await env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind('discord_webhook_encrypted').first();
