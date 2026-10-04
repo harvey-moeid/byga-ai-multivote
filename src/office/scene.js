@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { buildOffice, updateScreens } from './assets.js';
 import { createCharacter, updateCharacter } from './character.js';
-import { TEAM, QUALITY, initialQuality, adaptiveQuality, meetingRoute, returnRoute, advanceActors } from './choreography.js';
+import { TEAM, QUALITY, initialQuality, adaptiveQuality, meetingRoute, returnRoute, ambientRoute, advanceActors } from './choreography.js';
 
 const $ = id => document.getElementById(id);
 const container = $('office-canvas');
@@ -20,6 +20,9 @@ let phase = 'idle', generation = 0, resolveGather, qualityMode = 'auto', level =
 let lastFrame = 0, lastDraw = 0, windowStart = 0, samples = [], frameAverage = 0;
 let hidden = document.hidden, speaking = null, speechUntil = 0, speechQueue = [], queueIndex = 0, discussionDone;
 let cameraMotion = null, ready = false, contextLost = false;
+let cameraMode = 'auto', autoCameraAngle = Math.atan2(22.1,14.5), autoCameraBob = 0;
+const AMBIENT_INTERVAL_MS = 5 * 60 * 1000;
+let ambientNextAt = performance.now() + AMBIENT_INTERVAL_MS, ambientRemaining = AMBIENT_INTERVAL_MS, ambientBatch = null;
 const speech = document.createElement('div');
 speech.className = 'office-speech'; speech.hidden = true; $('speech-layer').append(speech);
 const projected = new THREE.Vector3(), speakerPosition = new THREE.Vector3();
@@ -65,7 +68,19 @@ function resize() {
   camera.updateProjectionMatrix();
   renderer.setSize(width, height, false);
 }
-function cameraView(view = 'office') {
+function setCameraMode(mode) {
+  cameraMode = mode === 'manual' ? 'manual' : 'auto';
+  const button = $('auto-camera');
+  if (button) {
+    button.setAttribute('aria-pressed', String(cameraMode === 'auto'));
+    button.classList.toggle('active', cameraMode === 'auto');
+  }
+  if (cameraMode === 'auto' && camera && controls) {
+    autoCameraAngle = Math.atan2(camera.position.z - controls.target.z, camera.position.x - controls.target.x);
+  }
+}
+function cameraView(view = 'office', manual = false) {
+  if (manual) setCameraMode('manual');
   const target = view === 'meeting' ? new THREE.Vector3(4.0, .75, -3.2) : new THREE.Vector3(0, .4, .1);
   const offset = new THREE.Vector3(14.5, 18, 22);
   const zoom = view === 'meeting' ? (container.clientWidth < 600 ? 1.85 : 2.25) : 1;
@@ -78,14 +93,65 @@ function say(id, name, text, seconds = 4) {
   const content = document.createElement('span'); content.textContent = String(text).slice(0, 210);
   speech.append(title, content); speech.hidden = false;
 }
-function setRoute(actor, path, delay, angle) {
+function setRoute(actor, path, delay, angle, sitOnArrival = 1) {
   actor.path = path.map(([x,z]) => new THREE.Vector3(x, .015, z));
   actor.delay = delay; actor.targetSit = 0; actor.walking = false;
-  actor.arrived = false; actor.destinationAngle = angle;
+  actor.arrived = false; actor.destinationAngle = angle; actor.sitOnArrival = sitOnArrival;
+}
+function actorName(actor) {
+  return actor.member.boss ? 'Bos' : 'Analis ' + (actor.member.id + 1);
+}
+function resetAmbientClock(now = performance.now(), delay = AMBIENT_INTERVAL_MS) {
+  ambientRemaining = delay;
+  ambientNextAt = now + delay;
+}
+function pauseAmbientClock(now = performance.now()) {
+  ambientRemaining = Number.isFinite(ambientNextAt) ? Math.max(1000, ambientNextAt - now) : AMBIENT_INTERVAL_MS;
+  ambientNextAt = Infinity;
+  ambientBatch = null;
+}
+function resumeAmbientClock(now = performance.now()) {
+  ambientNextAt = now + Math.max(1000, ambientRemaining || AMBIENT_INTERVAL_MS);
+}
+function startAmbientEvent(now = performance.now()) {
+  if (!ready || phase !== 'idle' || ambientBatch) return false;
+  const pool = actors.filter(participant).sort(() => Math.random() - .5);
+  const count = Math.min(pool.length, 1 + Math.floor(Math.random() * 3));
+  const selected = pool.slice(0, count);
+  selected.forEach((actor, index) => {
+    const preferred = actor.member.boss ? index : actor.member.id % 2;
+    const variant = Math.random() < .72 ? preferred : Math.floor(Math.random() * 4);
+    actor.ambientPlan = ambientRoute(actor.member, variant);
+    setRoute(actor, actor.ambientPlan.path, index * .32, actor.ambientPlan.angle, 0);
+  });
+  ambientBatch = { actors:selected, stage:'out', dwellUntil:0 };
+  resetAmbientClock(now);
+  const first = selected[0];
+  say(first.member.id, actorName(first), first.ambientPlan.label, 3.5);
+  window.dispatchEvent(new CustomEvent('office:activity',{detail:selected.map(actor=>({id:actor.member.id,activity:actor.ambientPlan.label}))}));
+  return true;
+}
+function updateAmbient(now) {
+  if (phase !== 'idle') return;
+  if (!ambientBatch && now >= ambientNextAt) startAmbientEvent(now);
+  if (!ambientBatch) return;
+  if (ambientBatch.stage === 'out' && ambientBatch.actors.every(actor => actor.arrived)) {
+    if (!ambientBatch.dwellUntil) {
+      ambientBatch.dwellUntil = now + 3500;
+      const first = ambientBatch.actors[0];
+      say(first.member.id, actorName(first), first.ambientPlan.label, 3.5);
+    } else if (now >= ambientBatch.dwellUntil) {
+      ambientBatch.stage = 'back';
+      ambientBatch.actors.forEach((actor,index)=>setRoute(actor, actor.ambientPlan.back, index * .22, actor.member.homeAngle, 1));
+    }
+  } else if (ambientBatch.stage === 'back' && ambientBatch.actors.every(actor => actor.arrived && actor.sit > .97)) {
+    ambientBatch = null;
+  }
 }
 function beginMeeting() {
   if (!ready || phase !== 'idle') return Promise.reject(new Error('Kantor belum siap untuk meeting.'));
   generation++;
+  pauseAmbientClock();
   status('gathering'); speech.hidden = true; speaking = null;
   updateScreens(office.screens, null, 'MEETING');
   actors.filter(participant).forEach((actor, index) => setRoute(actor, meetingRoute(actor.member), index * .45, actor.member.seatAngle));
@@ -104,6 +170,21 @@ function discuss(data, error) {
       seconds:4
     })),
     { id:8, name:'Bos', text:data?.voting?.approved ? 'Disetujui: '+data.majority_signal+'. '+data.voting.support+'/6 mendukung arah awal. Discord mengikuti pengaturan.' : 'Dukungan '+(data?.voting?.support||0)+'/6. Syarat empat vote belum terpenuhi; tidak dikirim ke Discord.', seconds:5 }
+  ];
+  queueIndex = 0; speechUntil = 0; speech.hidden = true; speaking = null;
+  return new Promise(resolve => { discussionDone = resolve; });
+}
+function discussPublic(data) {
+  status('discussing');
+  cameraView('meeting');
+  updateScreens(office.screens, null, 'MEETING');
+  const signal = ['BUY','SELL'].includes(data?.signal) ? data.signal : '—';
+  speechQueue = [
+    { id:8, name:'Bos', text:'Meeting dimulai. Tim meninjau hasil analisis terbaru.', seconds:3 },
+    { id:0, name:'Analis 1', text:'Memeriksa struktur market dan area penting.', seconds:3 },
+    { id:2, name:'Analis 3', text:'Membandingkan indikator lintas timeframe.', seconds:3 },
+    { id:4, name:'Analis 5', text:'Meninjau volume dan kekuatan pergerakan.', seconds:3 },
+    { id:8, name:'Bos', text:'Hasil terbaru: '+signal+'.', seconds:4 }
   ];
   queueIndex = 0; speechUntil = 0; speech.hidden = true; speaking = null;
   return new Promise(resolve => { discussionDone = resolve; });
@@ -146,6 +227,15 @@ function tick(now) {
     const near = actors.some(a => a.path.length && Math.hypot(a.root.position.x - door.x, a.root.position.z - door.z) < 1.45);
     door.hinge.rotation.y = THREE.MathUtils.damp(door.hinge.rotation.y, near ? -Math.PI * .49 : 0, 5, dt);
   }
+  updateAmbient(now);
+  if (cameraMode === 'auto' && !cameraMotion && phase === 'idle') {
+    autoCameraAngle += dt * .035;
+    autoCameraBob += dt * .18;
+    const target = new THREE.Vector3(0,.4,.1);
+    const radius = container.clientWidth < 600 ? 25 : 26.5;
+    camera.position.set(target.x + Math.cos(autoCameraAngle) * radius, 18.2 + Math.sin(autoCameraBob) * .65, target.z + Math.sin(autoCameraAngle) * radius);
+    controls.target.lerp(target, 1 - Math.exp(-dt * 2));
+  }
   if (cameraMotion) {
     cameraMotion.elapsed += dt;
     const t = Math.min(1, cameraMotion.elapsed / 1.4), smooth = t * t * (3 - 2 * t);
@@ -162,7 +252,7 @@ function tick(now) {
     const resolve = resolveGather; resolveGather = null; resolve?.();
   }
   if (phase === 'returning' && actors.filter(participant).every(a => a.arrived && a.sit > .97)) {
-    status('idle'); window.dispatchEvent(new Event('office:idle'));
+    status('idle'); resumeAmbientClock(now); window.dispatchEvent(new Event('office:idle'));
   }
   updateSpeech(now);
   const drawStart = performance.now();
@@ -199,8 +289,8 @@ function init() {
   controls = new OrbitControls(camera, renderer.domElement);
   controls.target.set(0, .4, .1); controls.enableDamping = true;
   controls.minPolarAngle = .24; controls.maxPolarAngle = Math.PI * .46;
-  controls.minZoom = .65; controls.maxZoom = 3.5; controls.enablePan = true;
-  controls.addEventListener('start', () => { cameraMotion = null; });
+  controls.minZoom = .65; controls.maxZoom = 3.5; controls.enablePan = false;
+  controls.addEventListener('start', () => { cameraMotion = null; setCameraMode('manual'); });
   const pmrem = new THREE.PMREMGenerator(renderer);
   const room = new RoomEnvironment();
   const environment = pmrem.fromScene(room, .04);
@@ -220,9 +310,11 @@ function init() {
   setQuality(saved, false);
   observer = new ResizeObserver(resize); observer.observe(container);
   choice.addEventListener('change', () => setQuality(choice.value));
-  $('view-office').addEventListener('click', () => cameraView('office'));
-  $('view-meeting').addEventListener('click', () => cameraView('meeting'));
-  const zoom = factor => { cameraMotion = null; camera.zoom = THREE.MathUtils.clamp(camera.zoom * factor, .65, 3.5); camera.updateProjectionMatrix(); };
+  $('view-office').addEventListener('click', () => cameraView('office', true));
+  $('view-meeting').addEventListener('click', () => cameraView('meeting', true));
+  $('auto-camera').addEventListener('click', () => setCameraMode('auto'));
+  setCameraMode('auto');
+  const zoom = factor => { cameraMotion = null; setCameraMode('manual'); camera.zoom = THREE.MathUtils.clamp(camera.zoom * factor, .65, 3.5); camera.updateProjectionMatrix(); };
   $('zoom-in').addEventListener('click', () => zoom(1.2)); $('zoom-out').addEventListener('click', () => zoom(1 / 1.2));
   const raycaster = new THREE.Raycaster(), pointer = new THREE.Vector2();
   let pointerStart = null;
@@ -252,9 +344,10 @@ function init() {
   controls.update(); renderer.render(scene, camera);
   $('scene-loading').hidden = true; ready = true;
   window.bygaOffice = {
-    beginMeeting, discuss,
+    beginMeeting, discuss, discussPublic,
+    triggerAmbient() { return startAmbientEvent(performance.now()); },
     get busy() { return phase !== 'idle'; },
-    get state() { return { phase, generation, level, qualityMode, frameAverage, drawCalls:renderer.info.render.calls, triangles:renderer.info.render.triangles, actors:actors.map(a => ({ id:a.member.id, x:a.root.position.x, z:a.root.position.z, sitting:a.sit, arrived:a.arrived, path:a.path.length })) }; }
+    get state() { return { phase, generation, level, qualityMode, cameraMode, ambientActive:!!ambientBatch, ambientDueInMs:Number.isFinite(ambientNextAt)?Math.max(0,ambientNextAt-performance.now()):null, frameAverage, drawCalls:renderer.info.render.calls, triangles:renderer.info.render.triangles, actors:actors.map(a => ({ id:a.member.id, x:a.root.position.x, z:a.root.position.z, sitting:a.sit, arrived:a.arrived, path:a.path.length })) }; }
   };
   window.dispatchEvent(new Event('office:ready'));
   windowStart = performance.now(); raf = requestAnimationFrame(tick);
