@@ -11,12 +11,6 @@ const definitions = [
   { provider: "workers-ai", providerLabel: "Cloudflare Workers AI", modelEnv: "WORKERS_AI_MODEL", keyEnv: "AI", kind: "workers-ai", defaultModel: "@cf/meta/llama-3.1-8b-instruct-fast" }
 ];
 
-const MODEL_ALIASES = {
-  "gemini-2.5-flash": "gemini-3.8-flash",
-  "meta/llama-3.3-70b-instruct": "openai/gpt-oss-20b",
-  "mistral-large-latest": "mistral-small-latest"
-};
-
 function extractText(data, kind) {
   if (kind === "gemini") return (data?.candidates?.[0]?.content?.parts || []).map(p => p?.text || "").join("\n").trim();
   if (kind === "cohere") {
@@ -78,7 +72,7 @@ async function request(def, { env, prompt, timeoutMs = 60000, maxRetries = 1 }) 
   if (!apiKey) throw Object.assign(new Error(`Missing secret ${def.keyEnv}`), { code: "MISSING_API_KEY" });
 
   const configuredModel = String(env?.[def.modelEnv] || def.defaultModel);
-  const model = MODEL_ALIASES[configuredModel] || configuredModel;
+  const model = configuredModel;
   const endpoint = def.endpointEnv ? String(env?.[def.endpointEnv] || def.endpoint) : def.endpoint;
   const p = splitPrompt(prompt);
 

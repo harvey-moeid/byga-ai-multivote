@@ -1,7 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it,vi } from "vitest";
 import { PROVIDERS, classifyProviderError } from "../src/providers/registry.js";
 
 describe("external AI provider registry", () => {
+  it('sends the exact model configured for a character without substituting aliases',async()=>{
+    const f=vi.fn().mockResolvedValue(new Response(JSON.stringify({candidates:[{content:{parts:[{text:'SIGNAL: BUY'}]}}]}),{status:200}));
+    vi.stubGlobal('fetch',f);
+    try {
+      await PROVIDERS.find(p=>p.meta.provider==='google-gemini').run({env:{GEMINI_API_KEY:'test-key',GEMINI_MODEL:'gemini-2.5-flash'},prompt:'snapshot',maxRetries:0});
+      expect(String(f.mock.calls[0][0])).toContain('/gemini-2.5-flash:generateContent');
+    }finally{vi.unstubAllGlobals();}
+  });
   it("contains nine external providers and Workers AI", () => {
     expect(PROVIDERS.map(p => p.meta.provider)).toEqual([
       "google-gemini", "groq", "openrouter", "mistral-ai", "hugging-face",
