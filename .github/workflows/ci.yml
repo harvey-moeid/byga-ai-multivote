@@ -23,6 +23,19 @@ jobs:
         run: npm ci
       - name: Run unit tests
         run: npm test
+      - name: Build 3D office
+        run: npm run build
+      - name: Install browser for office verification
+        run: npx playwright install --with-deps chromium
+      - name: Verify 3D office on desktop and mobile
+        run: npm run test:office
+      - name: Upload office screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: office-screenshots
+          path: /tmp/byga-office-qa
+          if-no-files-found: ignore
 
   deploy:
     name: Deploy to Cloudflare Pages
@@ -47,6 +60,7 @@ jobs:
         run: npm ci
 
       - name: Ensure Cloudflare Pages project exists
+        # Bundle Three.js locally so production does not depend on a CDN.
         run: npx wrangler pages project create byga-ai-multivote --production-branch=main || true
 
       # Semua migration dijalankan urut nama file.
@@ -61,6 +75,15 @@ jobs:
               schema="$(npx wrangler d1 execute byga-ai-multivote-db --remote --command='PRAGMA table_info(analysis_results)' 2>/dev/null || true)"
               if echo "$schema" | grep -q "role" &&                  echo "$schema" | grep -q "vote_index" &&                  echo "$schema" | grep -q "vote_group" &&                  echo "$schema" | grep -q "data_source"; then
                 echo "0006 already applied; skipping."
+                continue
+              fi
+            fi
+            if [ "$f" = "migrations/0007_analysis_decision_reason.sql" ]; then
+              schema="$(npx wrangler d1 execute byga-ai-multivote-db --remote --command='PRAGMA table_info(analyses)' --json)"
+              has_column="$(printf '%s' "$schema" | node -e 'const data=JSON.parse(require("fs").readFileSync(0,"utf8")); if(!Array.isArray(data)||data.some(batch=>batch.success!==true||!Array.isArray(batch.results))) throw new Error("Invalid D1 schema response"); process.stdout.write(data.flatMap(batch=>batch.results).some(row=>row.name==="decision_reason")?"yes":"no");')"
+              if [ "$has_column" = "yes" ]; then
+                npx wrangler d1 execute byga-ai-multivote-db --remote --command='CREATE INDEX IF NOT EXISTS idx_analyses_decision_reason ON analyses (decision_reason)'
+                echo "0007 already applied; skipping ALTER TABLE."
                 continue
               fi
             fi
@@ -85,4 +108,4 @@ jobs:
           printf '%s' "$SESSION_SECRET" | npx wrangler pages secret put SESSION_SECRET --project-name=byga-ai-multivote
 
       - name: Deploy to Cloudflare Pages
-        run: npx wrangler pages deploy dashboard --project-name=byga-ai-multivote
+        run: npm run build && npx wrangler pages deploy dashboard --project-name=byga-ai-multivote
