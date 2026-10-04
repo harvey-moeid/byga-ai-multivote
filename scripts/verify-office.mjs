@@ -47,7 +47,7 @@ async function setup(viewport) {
     }
     return route.fulfill({json:{}});
   });
-  await page.goto('http://localhost:'+(process.env.PORT||4173));
+  await page.goto('http://localhost:'+(process.env.PORT||4173)+'/admin.html');
   await page.waitForFunction(()=>!!window.bygaOffice,{timeout:30000});
   await page.waitForFunction(()=>!document.querySelector('#analyze-btn').disabled,{timeout:60000});
   return page;
@@ -82,6 +82,12 @@ try {
   await desktop.selectOption('#quality','high');
   await desktop.waitForTimeout(1500);
   assert.equal(await desktop.evaluate(()=>window.bygaOffice.state.actors.length),9);
+  assert.equal(await desktop.evaluate(()=>window.bygaOffice.state.cameraMode),'auto');
+  const ambientStarted=await desktop.evaluate(()=>window.bygaOffice.triggerAmbient());
+  assert.equal(ambientStarted,true);
+  await desktop.waitForTimeout(900);
+  assert.equal(await desktop.evaluate(()=>window.bygaOffice.state.ambientActive),true);
+  assert((await desktop.evaluate(()=>window.bygaOffice.state.actors)).some(actor=>actor.path>0||!actor.arrived),'Ambient office event must move at least one participant');
   const screenshot=await capture(desktop,'desktop.png');
   const png=PNG.sync.read(screenshot),pixels=new Set();
   for(let y=png.height/2-24;y<png.height/2+24;y++)for(let x=png.width/2-24;x<png.width/2+24;x++){
