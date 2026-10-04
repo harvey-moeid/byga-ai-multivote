@@ -18,7 +18,7 @@ form.addEventListener("submit", async (e) => {
       errorEl.hidden = false;
       return;
     }
-    window.location.href = "/";
+    window.location.href = "/admin";
   } catch (err) {
     errorEl.textContent = "Tidak bisa menghubungi server.";
     errorEl.hidden = false;
