@@ -1,5 +1,6 @@
 node_modules/
 dashboard/office.bundle.js
+dashboard/app.bundle.js
 .wrangler/
 .dev.vars
 dist/

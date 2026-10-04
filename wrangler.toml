@@ -2,6 +2,9 @@ name = "byga-ai-multivote"
 compatibility_date = "2024-09-23"
 pages_build_output_dir = "dashboard"
 
+[ai]
+binding = "AI"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "byga-ai-multivote-db"
@@ -15,7 +18,7 @@ database_id = "76f53f4c-a542-48a7-8eb8-10dbcba3c1aa"
 [vars]
 PRIMARY_EXCHANGE = "binance"
 FALLBACK_EXCHANGE = "bybit,okx"
-SYMBOL = "BTCUSDT"
+SYMBOL = "BTCUSDT.P"
 MARKET_TYPE = "perpetual"
 TIMEFRAME = "5m"
 GEMINI_MODEL = "gemini-3.8-flash"
@@ -28,6 +31,7 @@ NVIDIA_MODEL = "openai/gpt-oss-20b"
 SAMBANOVA_MODEL = "DeepSeek-V3.1"
 SAMBANOVA_BASE_URL = "https://api.sambanova.ai/v1/chat/completions"
 AI_GATEWAY_MODEL = "xai/grok-4-fast-non-reasoning"
+WORKERS_AI_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast"
 CANDLE_LIMIT = "150"
 PROMPT_VERSION = "1.15.0"
 MARKET_SCHEMA_VERSION = "1.4.0"

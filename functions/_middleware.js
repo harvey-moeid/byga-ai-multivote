@@ -18,15 +18,10 @@
 
 import { isAuthenticated } from "../src/lib/auth.js";
 
-const PUBLIC_PATHS = new Set(["/login", "/login.html", "/login.js", "/api/login", "/api/ingest"]);
+const PUBLIC_PATHS = new Set(["/login", "/login.html", "/login.js", "/api/login", "/api/ingest", "/api/cron"]);
 
 async function withModelsUi(path, response) {
-  const isDashboard = path === "/" || path === "/index.html";
-  const isHtml = String(response.headers.get("content-type") || "").includes("text/html");
-  if (!isDashboard || !isHtml || typeof HTMLRewriter === "undefined") return response;
-  return new HTMLRewriter()
-    .on("body", { element(el) { el.append('<script src="/models.js"></script>', { html: true }); } })
-    .transform(response);
+  return response;
 }
 
 export async function onRequest(context) {

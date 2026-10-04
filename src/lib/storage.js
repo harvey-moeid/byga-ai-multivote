@@ -1,7 +1,7 @@
 const SIGNALS = ["BUY", "SELL", "NO_TRADE"];
 const clampInt = (v, min, max, fallback) => { const n = Number.parseInt(v, 10); return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback; };
 export async function getLatestAnalysisTimestamp(db) { if (!db?.prepare) throw new Error("D1 binding DB is not configured"); const r = await db.prepare("SELECT created_at FROM analyses ORDER BY created_at DESC LIMIT 1").first(); return r?.created_at ?? null; }
-export async function saveAnalysis(db, analysis, results = []) {
+export async function saveAnalysis(db, analysis, results = [], extraStatements = []) {
   if (!db?.prepare || !db?.batch) throw new Error("D1 binding DB does not support writes"); const a = analysis;
   const statements = [db.prepare(`INSERT INTO analyses
     (id,created_at,exchange,symbol,market_type,timeframe,market_snapshot,prompt_version,market_schema_version,majority_signal,decision_reason,buy_votes,sell_votes,no_trade_votes,success_count,error_count,total_models,duration_ms,last_price,price_change_pct_24h)
@@ -12,7 +12,7 @@ export async function saveAnalysis(db, analysis, results = []) {
   for (const r of results) statements.push(db.prepare(`INSERT INTO analysis_results
     (id,analysis_id,provider,provider_label,role,vote_index,vote_group,data_source,status,signal,reason,raw_answer,confidence,duration_ms,error_code,error,adapter_version,created_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(r.id,r.analysis_id,r.provider,r.provider_label,r.role,r.vote_index,r.vote_group,r.data_source,r.status,r.signal,r.reason,r.raw_answer,r.confidence,r.duration_ms,r.error_code,r.error,r.adapter_version,r.created_at));
-  await db.batch(statements); return a;
+  await db.batch([...statements,...extraStatements]); return a;
 }
 export async function cleanupOldAnalyses(db, days = 365) { if (!db?.prepare) throw new Error("D1 binding DB is not configured"); const retention = clampInt(days, 1, 36500, 365); const cutoff = new Date(Date.now() - retention * 86400000).toISOString(); const result = await db.prepare("DELETE FROM analyses WHERE created_at < ?").bind(cutoff).run(); return { deleted: Number(result?.meta?.changes ?? 0), cutoff }; }
 export async function listAnalyses(db, { limit = 50, offset = 0, signal = null } = {}) {

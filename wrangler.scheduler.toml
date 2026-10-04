@@ -1,0 +1,12 @@
+name = "byga-multivote-scheduler"
+main = "src/pipeline/scheduler.js"
+compatibility_date = "2026-10-04"
+
+[vars]
+APP_URL = "https://byga-ai.muidsoft.com"
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[observability]
+enabled = true

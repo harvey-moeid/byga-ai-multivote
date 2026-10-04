@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "build": "esbuild src/office/scene.js --bundle --minify --format=esm --target=es2022 --outfile=dashboard/office.bundle.js",
+    "build": "esbuild src/office/scene.js --bundle --minify --format=esm --target=es2022 --outfile=dashboard/office.bundle.js && esbuild dashboard/app.js --bundle --minify --format=esm --target=es2022 --outfile=dashboard/app.bundle.js",
     "preview": "node scripts/preview-office.mjs",
-    "test:office": "node scripts/verify-office.mjs",
+    "test:office": "node scripts/verify-office.mjs && node scripts/verify-pipeline-ui.mjs",
     "test": "vitest run"
   },
   "devDependencies": {
