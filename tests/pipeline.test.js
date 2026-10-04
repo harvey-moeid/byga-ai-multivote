@@ -7,6 +7,7 @@ import { sealWebhook,openWebhook,verifyCron,cronSignature,flushDiscord } from '.
 import { onRequestPost } from '../functions/api/analyze.js';
 import { onRequestGet,onRequestPut } from '../functions/api/settings.js';
 import { onRequestPost as cron } from '../functions/api/cron.js';
+import {dispatchCron} from '../src/pipeline/scheduler.js';
 import { setup,candles } from './helpers/pipeline-db.js';
 let resources=[];
 const use=(mode)=>{const r=setup(mode);resources.push(r);return r;};
@@ -117,10 +118,21 @@ describe('settings, authentication, and Discord delivery',()=>{
     const old=String(Date.now()-180000),stale={'x-byga-time':old,'x-byga-signature':await cronSignature(env.SESSION_SECRET,old,body)};
     expect((await cron({env,request:new Request('https://x/api/cron',{method:'POST',headers:stale,body})})).status).toBe(401);
   });
+  it('uses the Cloudflare-supported manual redirect mode and validates the signed dispatch',async()=>{
+    const {env}=use('flat');env.APP_URL='https://test.example';
+    const f=vi.fn(async(url,options)=>{
+      expect(options.redirect).toBe('manual');
+      return cron({env,request:new Request(url,options)});
+    });vi.stubGlobal('fetch',f);
+    expect((await dispatchCron(env)).status).toBe('filtered');
+    f.mockResolvedValue(new Response('',{status:302,headers:{location:'https://other.example'}}));
+    await expect(dispatchCron(env)).rejects.toThrow('CRON_REDIRECT_BLOCKED');
+  });
   it('queues only approved signals and does not send again after acknowledgment',async()=>{
     const {env,db}=use();env.DISCORD_WEBHOOK_URL='https://discord.com/api/webhooks/123/test_token';
     const f=vi.fn().mockResolvedValue(new Response('{}',{status:200}));vi.stubGlobal('fetch',f);
     const r=await runPipeline(env);expect(r.voting.support).toBe(6);expect(f).toHaveBeenCalledTimes(1);
+    expect(f.mock.calls[0][1].redirect).toBe('manual');
     expect(JSON.parse(f.mock.calls[0][1].body).allowed_mentions.parse).toEqual([]);
     await flushDiscord(env);await runPipeline(env);expect(f).toHaveBeenCalledTimes(1);expect(db.prepare('SELECT state FROM discord_outbox').get().state).toBe('sent');
   });
@@ -142,6 +154,12 @@ describe('settings, authentication, and Discord delivery',()=>{
     const {env,db}=use();await runPipeline(env);
     db.exec('UPDATE discord_outbox SET expires_at=0');env.DISCORD_WEBHOOK_URL='https://discord.com/api/webhooks/123/test_token';
     const f=vi.fn();vi.stubGlobal('fetch',f);await flushDiscord(env);expect(f).not.toHaveBeenCalled();expect(db.prepare('SELECT state FROM discord_outbox').get().state).toBe('expired');
+  });
+  it('blocks webhook redirects permanently without forwarding the request or token',async()=>{
+    const {env,db}=use();env.DISCORD_WEBHOOK_URL='https://discord.com/api/webhooks/123/test_token';
+    const f=vi.fn().mockResolvedValue(new Response('',{status:302,headers:{location:'https://other.example'}}));vi.stubGlobal('fetch',f);
+    await runPipeline(env);expect(f).toHaveBeenCalledTimes(1);expect(db.prepare('SELECT state FROM discord_outbox').get().state).toBe('failed');
+    await flushDiscord(env);expect(f).toHaveBeenCalledTimes(1);
   });
   it('respects disabled cron and rejects non-JSON manual requests',async()=>{
     const {env,db,settings}=use();settings.cronEnabled=false;

@@ -57,7 +57,7 @@ export async function flushDiscord(env,enabled=true) {
     const claim=await env.DB.prepare("UPDATE discord_outbox SET state='sending',lease_until=?,attempts=attempts+1 WHERE analysis_id=? AND (state='pending' OR (state='sending' AND lease_until<?)) AND next_attempt<=?").bind(now+60000,row.analysis_id,now,now).run();
     if(!claim.meta?.changes)continue;
     try {
-      const response=await fetch(url+'?wait=true',{method:'POST',headers:{'content-type':'application/json'},body:row.payload,redirect:'error',signal:AbortSignal.timeout(15000)});
+      const response=await fetch(url+'?wait=true',{method:'POST',headers:{'content-type':'application/json'},body:row.payload,redirect:'manual',signal:AbortSignal.timeout(15000)});
       if(!response.ok) {
         const retry=response.status===429?Number(response.headers.get('retry-after'))*1000:0;
         throw Object.assign(new Error('DISCORD_HTTP_'+response.status),{status:response.status,retry});
@@ -66,7 +66,7 @@ export async function flushDiscord(env,enabled=true) {
     } catch(error) {
       // Never log request errors or response bodies: they may contain webhook tokens.
       const code=error.status?'DISCORD_HTTP_'+error.status:'DISCORD_NETWORK_ERROR';
-      const permanent=error.status>=400&&error.status<500&&error.status!==429;
+      const permanent=error.status>=300&&error.status<500&&error.status!==429;
       const retry=Math.max(error.retry||0,Math.min(3600000,300000*2**Math.min(row.attempts,4)));
       await env.DB.prepare('UPDATE discord_outbox SET state=?,next_attempt=?,lease_until=0,last_error=? WHERE analysis_id=?').bind(permanent?'failed':'pending',Date.now()+retry,code,row.analysis_id).run();failed++;
     }
