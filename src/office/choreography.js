@@ -28,6 +28,33 @@ export function returnRoute(member) {
   return [[x+.48,z],[x+.48,route[0][1]],...route,[...member.home]];
 }
 
+export function ambientRoute(member, variant = 0) {
+  const [x,z]=member.home;
+  const analystLabels=['Memeriksa chart','Membandingkan timeframe','Mengambil kopi','Mengecek monitor lain'];
+  const bossLabels=['Mengunjungi meja analis','Memeriksa dashboard','Berjalan keliling kantor','Mengecek ruang kerja'];
+  const labels=member.boss?bossLabels:analystLabels;
+  const label=labels[Math.abs(variant)%labels.length];
+  let destination;
+  if (member.boss) {
+    const points=[[-2.9,-4.55],[-1.05,-1.1],[-3.8,-3.7],[-.6,-4.65]];
+    destination=points[Math.abs(variant)%points.length];
+  } else {
+    const points=[
+      [Math.min(.2,x+1.0),z+.48],
+      [Math.min(.4,x+1.45),z+(z>3?-.48:.48)],
+      [-.15,5.05],
+      [Math.max(-6.3,x-.75),z+.5]
+    ];
+    destination=points[Math.abs(variant)%points.length];
+  }
+  const corridorZ=member.boss?-4.8:z+.45;
+  const path=member.boss
+    ? [[x+.5,z],[x+.5,corridorZ],[destination[0],corridorZ],destination]
+    : [[x+.5,z],[x+.5,corridorZ],[destination[0],corridorZ],destination];
+  const back=path.slice(0,-1).reverse().concat([[x,z]]);
+  return {label,path,back,angle:member.boss?0:Math.PI};
+}
+
 export function shortestAngle(current, target) {
   return Math.atan2(Math.sin(target - current), Math.cos(target - current));
 }
@@ -40,7 +67,7 @@ export function advanceActors(actors, dt) {
     const direction = target.clone().sub(position), distance = direction.length();
     if (distance < .04) {
       position.copy(target); actor.path.shift();
-      if (!actor.path.length) { actor.arrived = true; actor.walking = false; actor.targetSit = 1; actor.angle = actor.destinationAngle; }
+      if (!actor.path.length) { actor.arrived = true; actor.walking = false; actor.targetSit = actor.sitOnArrival ?? 1; actor.angle = actor.destinationAngle; }
       continue;
     }
     direction.normalize();

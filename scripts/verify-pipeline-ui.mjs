@@ -25,7 +25,7 @@ try {
     return r.fulfill({json:{items:[]}});
   });
   const initialStatus=page.waitForResponse('**/api/status');
-  await page.goto('http://localhost:'+(process.env.PORT||4173));
+  await page.goto('http://localhost:'+(process.env.PORT||4173)+'/admin.html');
   await initialStatus;
   await page.waitForFunction(()=>!document.querySelector('#analyze-btn').disabled);
   assert(polls>0,'Initial cron status must be loaded');
