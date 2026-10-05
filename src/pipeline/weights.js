@@ -39,6 +39,7 @@ export async function loadAnalystWeights(env,snapshot,settings,{horizonHours=2,m
       WHERE r.status='success' AND r.signal IN ('BUY','SELL') AND a.created_at>=? AND a.created_at<=?
       ORDER BY a.created_at DESC`).bind(oldest,cutoff).all();
     const rows=(vq.results||[]).flatMap(v=>{const a=byId.get(v.analysis_id);return a?[{...v,...a}]:[]});
+    if(!rows.length)return neutral(analysts);
 
     const minTarget=Math.min(...rows.map(r=>r.target)),maxTarget=Math.max(...rows.map(r=>r.target));
     const prices=await env.CHART_DB.prepare(`SELECT open_time,close FROM candles
