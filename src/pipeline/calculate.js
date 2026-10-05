@@ -1,6 +1,6 @@
 // Pure deterministic functions shared by the browser and Pages/cron runtime.
 // No network, AI, clock, or database access belongs in this module.
-export const ENGINE_VERSION='2.0.0';
+export const ENGINE_VERSION='3.0.0';
 const avg=a=>a.reduce((s,v)=>s+v,0)/a.length;
 const direction=v=>v>0?'BUY':v<0?'SELL':'NEUTRAL';
 export function ema(values,period) {
@@ -129,6 +129,21 @@ export function groupConsensus(groups) {
   const buy=Object.values(groups).filter(g=>g.signal==='BUY').length,sell=Object.values(groups).filter(g=>g.signal==='SELL').length;
   return {meeting:buy>=2||sell>=2,direction:buy>=2?'BUY':sell>=2?'SELL':'NEUTRAL',buy,sell,required:2};
 }
+export function classifyMarketRegime(market,settings) {
+  const frame=settings.calculation.frames.trend,c=market.series[frame]||[],s=settings.calculation.indicators;
+  if(c.length<Math.max(60,s.emaSlow+s.macdSignal))return {label:'UNKNOWN',timeframe:frame};
+  const metrics=indicatorFrame(c,s).measurements,trs=ranges(c),atrWindow=Math.min(14,trs.length),baseWindow=Math.min(80,trs.length);
+  const atrNow=avg(trs.slice(-atrWindow)),atrBase=avg(trs.slice(-baseWindow));
+  const volatilityRatio=atrBase?atrNow/atrBase:1,lookback=Math.min(20,c.length-1),reference=c.at(-lookback-1)?.close||c[0].close;
+  const returnPct=(c.at(-1).close-reference)/reference*100;
+  const trendSignal=metrics.emaFast>metrics.emaSlow&&metrics.diPlus>metrics.diMinus?'BUY':metrics.emaFast<metrics.emaSlow&&metrics.diMinus>metrics.diPlus?'SELL':'NEUTRAL';
+  let label='RANGE';
+  if(volatilityRatio>=1.35&&trendSignal!=='NEUTRAL')label=trendSignal==='BUY'?'EXPANSION_UP':'EXPANSION_DOWN';
+  else if(metrics.adx>=s.adxMin&&trendSignal==='BUY'&&returnPct>0)label='TREND_UP';
+  else if(metrics.adx>=s.adxMin&&trendSignal==='SELL'&&returnPct<0)label='TREND_DOWN';
+  else if(volatilityRatio<=0.75&&metrics.adx<s.adxMin)label='COMPRESSION';
+  return {label,timeframe:frame,trend_signal:trendSignal,adx:Number(metrics.adx.toFixed(2)),return_pct:Number(returnPct.toFixed(3)),atr_pct:Number((atrNow/(c.at(-1).close||1)*100).toFixed(3)),volatility_ratio:Number(volatilityRatio.toFixed(3))};
+}
 export function calculateSnapshot(market,settings) {
   const c=settings.calculation,roles=c.frames,groups={};
   for(const [group,fn,parameters] of [['smc_ict',smcFrame,c.smc],['indicators',indicatorFrame,c.indicators],['volume',volumeFrame,c.volume]]) {
@@ -136,12 +151,32 @@ export function calculateSnapshot(market,settings) {
     groups[group]={group,signal:combineFrames(frames,roles),roles,parameters,frames};
   }
   const candles=market.series[roles.trigger];
-  return {engine_version:ENGINE_VERSION,symbol:'BTCUSDT.P',data_source:'chart_db',last_price:candles.at(-1).close,candle_times:Object.fromEntries(Object.entries(market.series).map(([tf,cs])=>[tf,cs.at(-1).timestamp])),groups,gate:groupConsensus(groups)};
+  return {engine_version:ENGINE_VERSION,symbol:'BTCUSDT.P',data_source:'chart_db',last_price:candles.at(-1).close,candle_times:Object.fromEntries(Object.entries(market.series).map(([tf,cs])=>[tf,cs.at(-1).timestamp])),regime:classifyMarketRegime(market,settings),groups,gate:groupConsensus(groups)};
 }
-export function meetingDecision(results,initialDirection) {
+const voteClamp=(n,min,max)=>Math.max(min,Math.min(max,n));
+export function meetingDecision(results,deterministicDirection,{weights={},mode='auto',minSuccess=4,minDirectionalVotes=3,minWeightedShare=.60}={}) {
   const valid=results.filter(r=>r.status==='success'&&['BUY','SELL'].includes(r.signal));
   const buy=valid.filter(r=>r.signal==='BUY').length,sell=valid.filter(r=>r.signal==='SELL').length;
-  const support=valid.filter(r=>r.signal===initialDirection).length;
-  const approved=['BUY','SELL'].includes(initialDirection)&&support>=4;
-  return {buy,sell,no_trade:0,success:valid.length,error:results.length-valid.length,total_models:6,support,required:4,approved,majority_signal:approved?initialDirection:null,decision_reason:approved?'FOUR_OF_SIX_AGREE':'INSUFFICIENT_SUPPORT'};
+  const scores={BUY:0,SELL:0};
+  const weighted_results=valid.map(r=>{
+    const reliability=voteClamp(Number(weights?.[r.analyst_id]?.weight??weights?.[r.vote_group]?.weight??1)||1,.8,1.2);
+    const confidence=Number.isFinite(Number(r.confidence))?voteClamp(Number(r.confidence),0,100):null;
+    const confidenceFactor=confidence==null?1:.9+(confidence/100)*.2;
+    const score=reliability*confidenceFactor;scores[r.signal]+=score;
+    return {analyst_id:r.analyst_id||r.vote_group,signal:r.signal,confidence,reliability_weight:reliability,score:Number(score.toFixed(3))};
+  });
+  const total=scores.BUY+scores.SELL,winner=scores.BUY===scores.SELL?null:(scores.BUY>scores.SELL?'BUY':'SELL');
+  const winnerScore=winner?scores[winner]:0,weightedShare=total?winnerScore/total:0,winnerVotes=winner==='BUY'?buy:winner==='SELL'?sell:0;
+  const decisive=valid.length>=minSuccess&&winnerVotes>=minDirectionalVotes&&weightedShare>=minWeightedShare;
+  const hasDeterministic=['BUY','SELL'].includes(deterministicDirection);
+  const support=hasDeterministic?valid.filter(r=>r.signal===deterministicDirection).length:winnerVotes;
+  let approved=false,majority_signal=null,decision_reason='INSUFFICIENT_WEIGHTED_SUPPORT';
+  if(hasDeterministic) {
+    if(decisive&&winner===deterministicDirection){approved=true;majority_signal=winner;decision_reason='WEIGHTED_AI_CONFIRMS_DETERMINISTIC';}
+    else if(decisive&&winner&&winner!==deterministicDirection)decision_reason='AI_OPPOSES_DETERMINISTIC';
+  } else if(mode==='manual') {
+    majority_signal=decisive?winner:null;
+    decision_reason=decisive?'MANUAL_WEIGHTED_MAJORITY':'MANUAL_AI_INCONCLUSIVE';
+  }
+  return {buy,sell,no_trade:0,success:valid.length,error:results.length-valid.length,total_models:results.length,support,required:minDirectionalVotes,approved,majority_signal,decision_reason,weighted_buy:Number(scores.BUY.toFixed(3)),weighted_sell:Number(scores.SELL.toFixed(3)),weighted_share_pct:Number((weightedShare*100).toFixed(2)),minimum_weighted_share_pct:Number((minWeightedShare*100).toFixed(2)),minimum_success:minSuccess,weighted_results};
 }
