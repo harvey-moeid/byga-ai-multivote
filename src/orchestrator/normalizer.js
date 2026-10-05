@@ -7,7 +7,7 @@ function clean(input) {
 }
 
 function confidenceValue(value) {
-  const n=Number(value);
+  const n=typeof value==='string'?Number.parseFloat(value):Number(value);
   if(!Number.isFinite(n))return null;
   return Math.max(0,Math.min(100,n<=1?n*100:n));
 }
