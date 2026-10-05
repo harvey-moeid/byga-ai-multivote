@@ -1,4 +1,4 @@
-const VERSION = 'byga-pwa-v3';
+const VERSION = 'byga-pwa-v4';
 const CACHE_PREFIX = 'byga-pwa-';
 const STATIC_CACHE = VERSION + '-static';
 const RUNTIME_CACHE = VERSION + '-runtime';
@@ -11,6 +11,8 @@ const CORE = [
   '/styles.css',
   '/public.js',
   '/login.js',
+  '/office.bundle.js',
+  '/app.bundle.js',
   '/pwa.js',
   '/manifest.webmanifest',
   '/byga-logo.png',
