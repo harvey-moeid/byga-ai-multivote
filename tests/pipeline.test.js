@@ -68,9 +68,11 @@ describe('real SQL read-only source and run guards',()=>{
     chart.exec("UPDATE candles SET high=0 WHERE timeframe='M5'");
     await expect(readChart(env,settings)).rejects.toHaveProperty('code','CHART_DATA_ERROR');
   });
-  it('records a neutral gate without calling AI or sending Discord',async()=>{
+  it('filters neutral auto runs but lets manual analysis call all six AI',async()=>{
     const {env,db}=use('flat');const ai=vi.spyOn(env.AI,'run'),fetchMock=vi.fn();vi.stubGlobal('fetch',fetchMock);
-    const r=await runPipeline(env);expect(r.status).toBe('filtered');expect(r.results).toHaveLength(0);expect(ai).not.toHaveBeenCalled();expect(fetchMock).not.toHaveBeenCalled();expect(db.prepare('SELECT COUNT(*) AS n FROM analyses').get().n).toBe(1);
+    const auto=await runPipeline(env,{trigger:'cron'});expect(auto.status).toBe('filtered');expect(auto.results).toHaveLength(0);expect(ai).not.toHaveBeenCalled();
+    const manual=await runPipeline(env);expect(manual.status).toBe('manual_review');expect(manual.meeting).toBe(true);expect(manual.gate_passed).toBe(false);expect(manual.results).toHaveLength(6);expect(ai).toHaveBeenCalledTimes(6);
+    expect(manual.majority_signal).toBe('BUY');expect(manual.delivery.eligible).toBe(false);expect(fetchMock).not.toHaveBeenCalled();expect(db.prepare('SELECT COUNT(*) AS n FROM analyses').get().n).toBe(2);
   });
   it('runs six characters on the same provider and isolates each model/snapshot',async()=>{
     const {env,db}=use();const ai=vi.spyOn(env.AI,'run');
@@ -78,15 +80,17 @@ describe('real SQL read-only source and run guards',()=>{
     expect(new Set(r.results.map(r=>r.analyst_id)).size).toBe(6);
     const a={...defaultSettings(env).analysts[0],model:'@cf/test/custom-model'};
     await callAnalyst(env,r.snapshot,a);expect(ai.mock.calls.at(-1)[0]).toBe('@cf/test/custom-model');
-    const prompt=JSON.parse(analystPrompt(r.snapshot,a).user);expect(prompt.group_snapshot.group).toBe('smc_ict');expect(prompt.groups).toBeUndefined();
+    const prompt=JSON.parse(analystPrompt(r.snapshot,a).user);expect(prompt.group_snapshot.group).toBe('smc_ict');expect(prompt.groups).toBeUndefined();expect(prompt.initial_direction).toBeUndefined();expect(prompt.market_regime.label).toBeTruthy();
     expect(db.prepare('SELECT COUNT(*) AS n FROM analysis_results').get().n).toBe(6);
   });
-  it('atomically suppresses concurrent cron/manual runs for the same closed candle',async()=>{
+  it('deduplicates cron per candle while allowing repeated manual analyses',async()=>{
     const {env,db}=use();const ai=vi.spyOn(env.AI,'run');
-    const runs=await Promise.all([runPipeline(env),runPipeline(env,{trigger:'cron'}),runPipeline(env)]);
-    expect(runs.filter(r=>r.duplicate)).toHaveLength(2);expect(ai).toHaveBeenCalledTimes(6);
-    const repeat=await runPipeline(env);expect(repeat.duplicate).toBe(true);expect(ai).toHaveBeenCalledTimes(6);
-    expect(db.prepare('SELECT COUNT(*) AS n FROM pipeline_runs').get().n).toBe(1);
+    const firstManual=await runPipeline(env),secondManual=await runPipeline(env);
+    expect(firstManual.duplicate).not.toBe(true);expect(secondManual.duplicate).not.toBe(true);expect(ai).toHaveBeenCalledTimes(12);
+    const cronRuns=await Promise.all([runPipeline(env,{trigger:'cron'}),runPipeline(env,{trigger:'cron'})]);
+    expect(cronRuns.filter(r=>r.duplicate)).toHaveLength(1);expect(ai).toHaveBeenCalledTimes(18);
+    const repeat=await runPipeline(env,{trigger:'cron'});expect(repeat.duplicate).toBe(true);expect(ai).toHaveBeenCalledTimes(18);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM pipeline_runs').get().n).toBe(3);
   });
   it('does not call AI when the client snapshot became outdated',async()=>{
     const {env}=use();const ai=vi.spyOn(env.AI,'run');
@@ -131,18 +135,18 @@ describe('settings, authentication, and Discord delivery',()=>{
   it('queues only approved signals and does not send again after acknowledgment',async()=>{
     const {env,db}=use();env.DISCORD_WEBHOOK_URL='https://discord.com/api/webhooks/123/test_token';
     const f=vi.fn().mockResolvedValue(new Response('{}',{status:200}));vi.stubGlobal('fetch',f);
-    const r=await runPipeline(env);expect(r.voting.support).toBe(6);expect(f).toHaveBeenCalledTimes(1);
+    const r=await runPipeline(env,{trigger:'cron'});expect(r.voting.support).toBe(6);expect(f).toHaveBeenCalledTimes(1);
     expect(f.mock.calls[0][1].redirect).toBe('manual');
     expect(JSON.parse(f.mock.calls[0][1].body).allowed_mentions.parse).toEqual([]);
-    await flushDiscord(env);await runPipeline(env);expect(f).toHaveBeenCalledTimes(1);expect(db.prepare('SELECT state FROM discord_outbox').get().state).toBe('sent');
+    await flushDiscord(env);await runPipeline(env,{trigger:'cron'});expect(f).toHaveBeenCalledTimes(1);expect(db.prepare('SELECT state FROM discord_outbox').get().state).toBe('sent');
   });
   it('retries rate-limited delivery without rerunning AI',async()=>{
     const {env,db}=use();env.DISCORD_WEBHOOK_URL='https://discord.com/api/webhooks/123/test_token';
     const ai=vi.spyOn(env.AI,'run'),f=vi.fn().mockResolvedValueOnce(new Response('',{status:429,headers:{'retry-after':'2'}})).mockResolvedValue(new Response('{}',{status:200}));vi.stubGlobal('fetch',f);
-    await runPipeline(env);expect(db.prepare('SELECT state FROM discord_outbox').get().state).toBe('pending');
+    await runPipeline(env,{trigger:'cron'});expect(db.prepare('SELECT state FROM discord_outbox').get().state).toBe('pending');
     db.exec('UPDATE discord_outbox SET next_attempt=0');await flushDiscord(env);expect(ai).toHaveBeenCalledTimes(6);expect(f).toHaveBeenCalledTimes(2);
     expect((await pipelineStatus(env)).latest.result.delivery.state).toBe('sent');
-    expect((await runPipeline(env)).delivery.state).toBe('sent');
+    expect((await runPipeline(env,{trigger:'cron'})).delivery.state).toBe('sent');
   });
   it('does not enqueue or send an opposing majority or a three-three tie',async()=>{
     const {env,db}=use();env.DISCORD_WEBHOOK_URL='https://discord.com/api/webhooks/123/test_token';
