@@ -15,6 +15,7 @@ const browser = await chromium.launch({
   args:['--no-sandbox','--disable-dev-shm-usage','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']
 });
 const providers = [{provider:'workers-ai',label:'Workers AI',configured:true,default_model:'@cf/test/default'}];
+const provider_health=[{provider:'workers-ai',label:'Workers AI',state:'HEALTHY',configured:true,samples:12,success_rate_pct:91.7,avg_latency_ms:640,last_checked_at:'2026-10-05T08:00:00Z',last_error_code:'RATE_LIMITED'}];
 let settings=defaultSettings({AI:{run(){}}});
 const market=(mode='up')=>({symbol:'BTCUSDT.P',series:Object.fromEntries(['H1','M15','M5'].map(tf=>[tf,candles(tf,250,mode)]))});
 const snapshot=calculateSnapshot(market(),settings);
@@ -34,7 +35,7 @@ async function setup(viewport) {
     const request = route.request(), path = new URL(request.url()).pathname;
     if(path==='/api/settings') {
       if(request.method()==='PUT'){settings=request.postDataJSON().settings;return route.fulfill({json:{ok:true,settings,webhook_configured:false}});}
-      return route.fulfill({json:{settings,providers,webhook_configured:false,cron:'*/5 * * * *'}});
+      return route.fulfill({json:{settings,providers,provider_health,webhook_configured:false,cron:'*/5 * * * *'}});
     }
     if(path==='/api/market') return route.fulfill({json:{settings,market:market(mode==='neutral'?'flat':'up')}});
     if(path==='/api/status') return route.fulfill({json:{latest:null,discord:[]}});
@@ -101,6 +102,8 @@ try {
   await desktop.click('#edit-analysts');
   await desktop.locator('[aria-label="Provider analis 1"]').waitFor();
   assert.equal(await desktop.locator('[aria-label^="Provider analis"]').count(),6);
+  assert.equal(await desktop.locator('.provider-health-card').count(),1);
+  assert.match(await desktop.locator('.provider-health-badge').textContent(),/Healthy/);
   await desktop.fill('[aria-label="Model analis 1"]','@cf/test/custom-model');
   await desktop.getByRole('button',{name:'Simpan pengaturan',exact:true}).click();
   await desktop.waitForFunction(()=>document.querySelector('#pipeline-settings [role="status"]').textContent.includes('Tersimpan'));
@@ -131,6 +134,9 @@ try {
   });
   assert(settingsLayout.left>=0&&settingsLayout.right<=settingsLayout.viewport,'Settings card must stay inside mobile viewport');
   assert(settingsLayout.bodyScroll<=settingsLayout.bodyClient,'Settings body must not overflow horizontally');
+  assert.equal(await mobile.locator('.provider-health-card').count(),1);
+  const healthBox=await mobile.locator('.provider-health-card').boundingBox();
+  assert(healthBox.width<=settingsLayout.bodyClient,'Provider health card must fit inside mobile settings body');
   await mobile.getByRole('button',{name:'Tutup',exact:true}).click();
   await mobile.click('#panel-close');
   const canvasBox=await mobile.locator('#office-canvas canvas').boundingBox();
