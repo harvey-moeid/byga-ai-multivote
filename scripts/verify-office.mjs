@@ -80,6 +80,27 @@ async function phase(page, next, timeout=90000) {
 }
 try {
   const desktop = await setup({width:1440,height:1000});
+  const pwa = await desktop.evaluate(async () => {
+    const manifest = await fetch('/manifest.webmanifest').then(response => response.json());
+    const serviceWorker = await fetch('/sw.js').then(response => response.text());
+    return {
+      manifestHref:document.querySelector('link[rel="manifest"]')?.getAttribute('href'),
+      display:manifest.display,
+      iconSizes:manifest.icons.map(icon => icon.sizes).sort(),
+      cachesBundles:serviceWorker.includes('/office.bundle.js') && serviceWorker.includes('/app.bundle.js'),
+      skipsApi:serviceWorker.includes("url.pathname.startsWith('/api/')")
+    };
+  });
+  assert.equal(pwa.manifestHref,'/manifest.webmanifest');
+  assert.equal(pwa.display,'standalone');
+  assert.deepEqual(pwa.iconSizes,['192x192','512x512']);
+  assert.equal(pwa.cachesBundles,true);
+  assert.equal(pwa.skipsApi,true);
+  assert.equal(await desktop.locator('#quality option[value="ultra"]').count(),1);
+  await desktop.selectOption('#quality','ultra');
+  await desktop.waitForTimeout(250);
+  assert.equal(await desktop.evaluate(()=>window.bygaOffice.state.qualityMode),'ultra');
+  assert.equal(await desktop.evaluate(()=>window.bygaOffice.state.level),'ultra');
   await desktop.selectOption('#quality','high');
   await desktop.waitForTimeout(1500);
   assert.equal(await desktop.evaluate(()=>window.bygaOffice.state.actors.length),9);
