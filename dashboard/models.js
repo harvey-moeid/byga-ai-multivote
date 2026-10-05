@@ -15,7 +15,10 @@ export async function openSettings(onSaved) {
   try {
     const res=await fetch('/api/settings'),data=await res.json();if(!res.ok)throw Error(data.error||'Pengaturan tidak tersedia.');
     const s=structuredClone(data.settings),fields=[];
-    body.replaceChildren(h('p',{text:'BTCUSDT.P · candle tertutup · chart_db read only. Meeting: 2/3 kelompok sepakat. Discord: minimal 4/6 vote mendukung arah awal.'}));
+    const healthByProvider=new Map((data.provider_health||[]).map(x=>[x.provider,x]));
+    const healthText=x=>({HEALTHY:'Healthy',DEGRADED:'Degraded',DOWN:'Down',READY:'Ready',NOT_CONFIGURED:'Not configured'})[x?.state]||'Unknown';
+    const healthTime=value=>value?new Date(value).toLocaleString('id-ID',{dateStyle:'short',timeStyle:'short',timeZone:'Asia/Jakarta'}):'Belum pernah dipakai';
+    body.replaceChildren(h('p',{text:'BTCUSDT.P · candle tertutup · chart_db read only. AUTO memakai gate 2/3; MANUAL selalu menjalankan 6 AI. Provider Health dihitung dari hasil penggunaan nyata, tanpa ping berbayar tambahan.'}));
     const section=(title)=>{const details=h('details',{class:'settings-section',open:''},h('summary',{text:title}));body.append(details);return details;};
     const frameSection=section('Timeframe dan perhitungan');
     for(const [role,label] of [['trend','Tren'],['structure','Struktur'],['trigger','Pemicu']]) {
@@ -28,10 +31,25 @@ export async function openSettings(onSaved) {
     }
     numberField(frameSection,s.calculation,'candleLimit');
     for(const [key,label] of [['smc','SMC / ICT'],['indicators','Indikator'],['volume','Volume']]){const box=section(label);for(const k of Object.keys(s.calculation[key]))numberField(box,s.calculation[key],k,label+' ');}
+
+    const healthSection=section('Provider Health');
+    healthSection.append(h('p',{class:'settings-help',text:'Berdasarkan maksimal 12 panggilan terbaru per provider. Healthy ≥80% sukses dan panggilan terakhir sukses; 3 kegagalan beruntun atau success rate <50% (minimal 4 sampel) ditandai Down.'}));
+    const healthGrid=h('div',{class:'provider-health-grid'});
+    for(const p of data.providers){
+      const x=healthByProvider.get(p.provider)||{state:p.configured?'READY':'NOT_CONFIGURED',samples:0,success_rate_pct:null,avg_latency_ms:null,last_checked_at:null,last_error_code:null};
+      const metrics=x.samples?x.success_rate_pct+'% sukses · '+x.samples+' sampel'+(x.avg_latency_ms!=null?' · '+x.avg_latency_ms+' ms':''):'Belum ada histori panggilan';
+      healthGrid.append(h('div',{class:'provider-health-card state-'+String(x.state||'UNKNOWN').toLowerCase()},
+        h('div',{class:'provider-health-head'},h('b',{text:p.label}),h('span',{class:'provider-health-badge',text:healthText(x)})),
+        h('small',{text:metrics}),
+        h('small',{text:'Terakhir: '+healthTime(x.last_checked_at)+(x.last_error_code?' · '+x.last_error_code:'')})
+      ));
+    }
+    healthSection.append(healthGrid);
+
     const team=section('Enam karakter · provider dan model');
     s.analysts.forEach((a,i)=>{
       const name=h('input',{value:a.name,maxlength:'40','aria-label':'Nama analis '+(i+1)});
-      const provider=h('select',{'aria-label':'Provider analis '+(i+1)},...data.providers.map(p=>h('option',{value:p.provider,text:p.label+(p.configured?'':' · belum aktif')})));provider.value=a.provider;
+      const provider=h('select',{'aria-label':'Provider analis '+(i+1)},...data.providers.map(p=>{const x=healthByProvider.get(p.provider);return h('option',{value:p.provider,text:p.label+' · '+healthText(x||{state:p.configured?'READY':'NOT_CONFIGURED'})});}));provider.value=a.provider;
       const model=h('input',{value:a.model,'aria-label':'Model analis '+(i+1),maxlength:'120'});
       const row=h('div',{class:'analyst-settings'},h('b',{text:['SMC/ICT','Indikator','Volume'][Math.floor(i/2)]+' · '+(i%2+1)}),name,provider,model);
       provider.addEventListener('change',()=>{model.value=data.providers.find(p=>p.provider===provider.value).default_model;});team.append(row);
