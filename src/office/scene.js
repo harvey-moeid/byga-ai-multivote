@@ -56,7 +56,15 @@ function applyQuality() {
   const scale = q.scale * (qualityMode === 'auto' ? dynamicScale : 1);
   renderer.setPixelRatio(Math.max(.5, dpr * scale));
   renderer.shadowMap.enabled = q.shadows;
-  renderer.shadowMap.type = q.shadowType === 'soft' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+  const nextShadowType = q.shadowType === 'soft' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+  if (renderer.shadowMap.type !== nextShadowType) {
+    renderer.shadowMap.type = nextShadowType;
+    scene.traverse(object => {
+      for (const mat of (Array.isArray(object.material) ? object.material : [object.material])) {
+        if (mat) mat.needsUpdate = true;
+      }
+    });
+  }
   let lampIndex = 0;
   scene.traverse(object => { if(object.isPointLight) object.visible = lampIndex++ < q.lights; });
   const sun = scene.getObjectByName('sun');
