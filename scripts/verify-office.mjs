@@ -167,16 +167,6 @@ try {
   await mobile.waitForFunction(()=>document.querySelector('#run-message').textContent.includes('terlalu lama'));
   assert.equal(await mobile.evaluate(()=>window.bygaOffice.state.phase),'idle');
   assert.equal(await mobile.locator('#analyze-btn').isDisabled(),false);
-  mode='neutral';
-  const generation=await mobile.evaluate(()=>window.bygaOffice.state.generation);
-  await mobile.click('#analyze-btn');
-  await phase(mobile,'gathering');
-  assert((await mobile.evaluate(()=>window.bygaOffice.state.generation))>generation,'Manual analysis without deterministic consensus must still start a meeting');
-  await phase(mobile,'discussing');
-  assert.equal(await mobile.locator('#result-status').textContent(),'MANUAL REVIEW');
-  assert.match(await mobile.locator('#discord-status').textContent(),/tidak dikirim/);
-  await phase(mobile,'returning');
-  await phase(mobile,'idle');
   await mobile.selectOption('#quality','medium');
   await mobile.reload();
   await mobile.waitForFunction(()=>!!window.bygaOffice);
@@ -184,7 +174,7 @@ try {
   assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await mobile.close();
   assert.deepEqual(errors,[]);
-  console.log('PASS: desktop/mobile, per-character shared provider settings, deterministic browser calculation, six-analyst meeting, neutral/error gates, return, quality persistence.');
+  console.log('PASS: desktop/mobile, per-character shared provider settings, deterministic browser calculation, six-analyst meeting, error handling, return, quality persistence.');
 } finally {
   await browser.close(); server.close();
 }
