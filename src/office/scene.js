@@ -16,7 +16,7 @@ const phaseCopy = {
   returning:['Kembali ke meja kerja', 'Meeting selesai']
 };
 let renderer, controls, scene, camera, actors, office, raf, observer;
-let phase = 'idle', generation = 0, resolveGather, qualityMode = 'auto', level = 'medium';
+let phase = 'idle', generation = 0, resolveGather, qualityMode = 'auto', level = 'medium', dynamicScale = 1, stableWindows = 0;
 let lastFrame = 0, lastDraw = 0, windowStart = 0, samples = [], frameAverage = 0;
 let hidden = document.hidden, speaking = null, speechUntil = 0, speechQueue = [], queueIndex = 0, discussionDone;
 let cameraMotion = null, ready = false, contextLost = false;
@@ -36,8 +36,15 @@ function status(next) {
 }
 function setQuality(mode, persist = true) {
   qualityMode = Object.hasOwn(QUALITY, mode) || mode === 'auto' ? mode : 'auto';
+  dynamicScale = 1; stableWindows = 0;
   if (qualityMode !== 'auto') level = qualityMode;
-  else level = initialQuality({ width:container.clientWidth, memory:navigator.deviceMemory, cores:navigator.hardwareConcurrency });
+  else level = initialQuality({
+    width:container.clientWidth,
+    memory:navigator.deviceMemory,
+    cores:navigator.hardwareConcurrency,
+    dpr:window.devicePixelRatio || 1,
+    saveData:navigator.connection?.saveData === true
+  });
   choice.value = qualityMode;
   if (persist) try { localStorage.setItem('byga-office-quality', qualityMode); } catch { /* Storage may be unavailable in private browsers. */ }
   applyQuality();
@@ -45,15 +52,22 @@ function setQuality(mode, persist = true) {
 function applyQuality() {
   if (!renderer) return;
   const q = QUALITY[level];
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2) * q.scale);
+  const dpr = Math.min(window.devicePixelRatio || 1, q.maxDpr || 2);
+  const scale = q.scale * (qualityMode === 'auto' ? dynamicScale : 1);
+  renderer.setPixelRatio(Math.max(.5, dpr * scale));
   renderer.shadowMap.enabled = q.shadows;
+  renderer.shadowMap.type = q.shadowType === 'soft' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
   let lampIndex = 0;
-  scene.traverse(object => { if(object.isPointLight){ object.visible = level === 'high' || (level === 'medium' && lampIndex++ < 2); } });
+  scene.traverse(object => { if(object.isPointLight) object.visible = lampIndex++ < q.lights; });
   const sun = scene.getObjectByName('sun');
-  sun.shadow.mapSize.set(q.mapSize, q.mapSize);
-  if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+  if (sun) {
+    sun.castShadow = q.shadows;
+    sun.shadow.mapSize.set(q.mapSize, q.mapSize);
+    if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+  }
   renderer.shadowMap.needsUpdate = true;
-  $('render-info').textContent = qualityMode === 'auto' ? 'AUTO' : Math.round(q.scale * 100) + '%';
+  const scalePct = Math.round(scale * 100);
+  $('render-info').textContent = qualityMode === 'auto' ? 'AUTO ' + level.toUpperCase() + ' · ' + scalePct + '%' : scalePct + '%';
   samples = []; windowStart = performance.now();
   resize();
 }
@@ -258,14 +272,40 @@ function tick(now) {
   const drawStart = performance.now();
   renderer.render(scene, camera);
   samples.push({ frame:rawDt, draw:performance.now() - drawStart });
-  if (now - windowStart > 4500) {
+  if (now - windowStart > 4500 && samples.length) {
     frameAverage = samples.reduce((sum,s) => sum + s.frame, 0) / samples.length;
     const drawAverage = samples.reduce((sum,s) => sum + s.draw, 0) / samples.length;
-    $('render-info').textContent = (qualityMode === 'auto' ? 'AUTO' : Math.round(QUALITY[level].scale * 100) + '%') + ' · ' + Math.min(QUALITY[level].fps, Math.round(1000 / frameAverage)) + ' FPS';
+    const q = QUALITY[level], frameBudget = 1000 / q.fps;
+    const fps = Math.min(q.fps, Math.round(1000 / frameAverage));
+    const scalePct = Math.round(q.scale * (qualityMode === 'auto' ? dynamicScale : 1) * 100);
+    $('render-info').textContent = (qualityMode === 'auto' ? 'AUTO ' + level.toUpperCase() : scalePct + '%') + ' · ' + fps + ' FPS';
     if (qualityMode === 'auto') {
-      // Draw time allows a 30 FPS tier to recover without oscillating at its cap.
-      const next = adaptiveQuality(level, frameAverage > 43 ? frameAverage : drawAverage + 8);
-      if (next !== level) { level = next; applyQuality(); }
+      const overrun = frameAverage - frameBudget;
+      const stressed = overrun > (q.fps === 60 ? 5 : 9) || drawAverage > frameBudget * .80;
+      const headroom = overrun < 2.5 && drawAverage < frameBudget * .45;
+      if (stressed) {
+        stableWindows = 0;
+        if (dynamicScale > .73) {
+          dynamicScale = Math.max(.72, Math.round((dynamicScale - .08) * 100) / 100);
+          applyQuality();
+        } else {
+          const pressure = frameAverage > frameBudget + 4 ? frameAverage : drawAverage + (q.fps === 60 ? 8 : 10);
+          const next = adaptiveQuality(level, pressure);
+          if (next !== level) { level = next; dynamicScale = .90; applyQuality(); }
+        }
+      } else if (headroom) {
+        stableWindows++;
+        if (stableWindows >= 2) {
+          stableWindows = 0;
+          if (dynamicScale < .99) {
+            dynamicScale = Math.min(1, Math.round((dynamicScale + .06) * 100) / 100);
+            applyQuality();
+          } else {
+            const next = adaptiveQuality(level, drawAverage + (q.fps === 60 ? 6 : 8));
+            if (next !== level) { level = next; dynamicScale = .88; applyQuality(); }
+          }
+        }
+      } else stableWindows = 0;
     }
     samples = []; windowStart = now;
   }
@@ -347,7 +387,7 @@ function init() {
     beginMeeting, discuss, discussPublic,
     triggerAmbient() { return startAmbientEvent(performance.now()); },
     get busy() { return phase !== 'idle'; },
-    get state() { return { phase, generation, level, qualityMode, cameraMode, ambientActive:!!ambientBatch, ambientDueInMs:Number.isFinite(ambientNextAt)?Math.max(0,ambientNextAt-performance.now()):null, frameAverage, drawCalls:renderer.info.render.calls, triangles:renderer.info.render.triangles, actors:actors.map(a => ({ id:a.member.id, x:a.root.position.x, z:a.root.position.z, sitting:a.sit, arrived:a.arrived, path:a.path.length })) }; }
+    get state() { return { phase, generation, level, qualityMode, dynamicScale, pixelRatio:renderer.getPixelRatio(), cameraMode, ambientActive:!!ambientBatch, ambientDueInMs:Number.isFinite(ambientNextAt)?Math.max(0,ambientNextAt-performance.now()):null, frameAverage, drawCalls:renderer.info.render.calls, triangles:renderer.info.render.triangles, actors:actors.map(a => ({ id:a.member.id, x:a.root.position.x, z:a.root.position.z, sitting:a.sit, arrived:a.arrived, path:a.path.length })) }; }
   };
   window.dispatchEvent(new Event('office:ready'));
   windowStart = performance.now(); raf = requestAnimationFrame(tick);
