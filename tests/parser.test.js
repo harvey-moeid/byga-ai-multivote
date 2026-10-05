@@ -3,9 +3,15 @@ import { parseSignal } from "../src/orchestrator/normalizer.js";
 
 describe("parseSignal", () => {
   it("parses the standard SIGNAL/REASON format", () => {
-    const r = parseSignal("SIGNAL: BUY\nREASON: Struktur M5 menunjukkan higher high dan momentum bullish.");
+    const r = parseSignal("SIGNAL: BUY\nCONFIDENCE: 82\nREASON: Struktur M5 menunjukkan higher high dan momentum bullish.");
     expect(r.signal).toBe("BUY");
+    expect(r.confidence).toBe(82);
     expect(r.reason).toContain("bullish");
+  });
+
+  it("parses and clamps JSON confidence", () => {
+    expect(parseSignal('{"signal":"SELL","confidence":0.91,"reason":"weak momentum"}').confidence).toBe(91);
+    expect(parseSignal('{"signal":"BUY","confidence":120,"reason":"trend"}').confidence).toBe(100);
   });
 
   it("parses extra commentary after the required block", () => {

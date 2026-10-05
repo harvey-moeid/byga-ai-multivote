@@ -5,28 +5,60 @@ enam karakter analis AI, cron lima menit, dan notifikasi Discord bersyarat.
 
 ## Alur produksi
 
-1. Baca candle **tertutup** H1, M15, M5 dari binding D1 `CHART_DB` (`chart_db`).
-   Simbol tampilan `BTCUSDT.P` dipetakan ke simbol penyimpanan `BTCUSDT` perpetual.
-   Modul `src/pipeline/chart.js` hanya menjalankan **SELECT**. Tidak ada fallback
-   ke API exchange, ingest, backfill, atau penulisan ke chart_db dalam alur ini.
-2. Hitung tiga snapshot tanpa AI: SMC/ICT, indikator, volume.
-   Browser menjalankan `calculateSnapshot`; Pages dan cron memakai modul murni
-   yang sama dan menghitung ulang di server agar hasil klien tidak dipercaya begitu saja.
-3. Masing-masing kelompok menggabungkan H1 (tren), M15 (struktur), M5 (pemicu).
-   Arah tren dan pemicu harus sama, sedangkan struktur boleh NETRAL atau searah.
-   Hasil kelompok adalah BUY, SELL, atau NETRAL.
-4. Jika minimal **dua dari tiga kelompok** sepakat BUY atau SELL, panggil enam analis:
-   dua menerima hanya snapshot SMC/ICT, dua indikator, dua volume. Setiap karakter
-   menghasilkan satu vote BUY/SELL. Error/timeout/NO_TRADE tidak dihitung sebagai vote.
-5. Jika minimal **empat dari enam** vote valid mendukung **arah awal** perhitungan,
-   keputusan disetujui. Empat vote berlawanan arah awal tetap ditolak.
-6. Hanya keputusan yang disetujui masuk antrean Discord. Pengiriman membutuhkan
-   toggle Discord aktif dan webhook terkonfigurasi. Hasil lainnya tetap di histori.
+1. Baca candle **tertutup** dari binding D1 `CHART_DB` (`chart_db`) sesuai tiga
+   timeframe yang dipilih untuk tren, struktur, dan pemicu. Simbol tampilan
+   `BTCUSDT.P` dipetakan ke `BTCUSDT` perpetual. Adapter market hanya menjalankan
+   **SELECT**; tidak ada ingest, fallback exchange, atau penulisan ke chart_db.
+2. Hitung tiga snapshot **tanpa AI**: SMC/ICT, indikator, dan volume. Browser dan
+   server memakai `calculateSnapshot` yang sama; server selalu menghitung ulang
+   sehingga snapshot dari browser tidak dipercaya sebagai sumber keputusan.
+3. Masing-masing kelompok menggabungkan timeframe tren/struktur/pemicu. Arah tren
+   dan pemicu harus sama, sedangkan struktur boleh NETRAL atau searah. Hasil setiap
+   kelompok adalah BUY, SELL, atau NETRAL.
+4. Engine mengklasifikasikan **market regime** secara deterministik dari timeframe
+   tren: TREND_UP, TREND_DOWN, EXPANSION_UP, EXPANSION_DOWN, COMPRESSION, RANGE,
+   atau UNKNOWN. Regime memakai EMA/DI, ADX, ATR relatif, dan return 20 candle.
+5. **AUTO / cron:** enam AI hanya dipanggil jika minimal **2 dari 3 kelompok**
+   deterministik sepakat BUY atau SELL. Jika gate gagal, run disimpan sebagai
+   `filtered` tanpa biaya AI.
+6. **MANUAL:** tombol **Mulai Analisis** selalu memanggil keenam AI setelah snapshot
+   tervalidasi, walaupun gate 2/3 tidak lolos. Manual boleh dijalankan berulang pada
+   candle yang sama, misalnya setelah mengganti provider/model atau parameter.
+7. Keenam AI tetap independen: dua hanya menerima SMC/ICT, dua hanya indikator,
+   dan dua hanya volume. Dalam setiap pasangan, slot 1 memakai lens **base-case** dan
+   slot 2 **adversarial/invalidation-first** untuk mengurangi correlated error.
+   Prompt **tidak pernah mengirim arah gate/initial_direction**. AI menerima regime,
+   peran timeframe, prioritas keputusan, review lens, dan snapshot kelompoknya
+   saja. SMC/ICT dikompakkan ke event terbaru yang relevan agar token tidak terbuang.
+   Output wajib BUY/SELL + confidence 0–100 + alasan maksimal dua kalimat.
+8. Vote memakai **adaptive weighted voting**. Reliability diukur dari hasil historis
+   slot+provider terhadap harga chart_db sekitar 2 jam setelah vote. Jika tersedia
+   minimal 12 sampel pada regime yang sama, sampel regime diprioritaskan; jika belum,
+   dipakai histori slot+provider pada konfigurasi timeframe yang sama. Accuracy
+   di-shrink ke prior 50% (20 sampel prior) dan bobot dibatasi **0.8–1.2**. Jika data
+   histori belum cukup atau gagal dibaca, bobot aman kembali ke **1.0**.
+   Confidence model hanya menjadi modifier kecil **0.9–1.1**, sehingga satu model
+   tidak dapat mendominasi hanya karena mengaku sangat yakin.
+9. Keputusan AI dianggap decisive bila ada minimal **4 vote sukses**, minimal
+   **3 vote mentah** pada arah pemenang, dan weighted share minimal **60%**.
+   Untuk run yang memiliki gate deterministik, arah weighted AI **harus sama**
+   dengan arah deterministic agar status menjadi `approved`.
+10. Manual tanpa konsensus deterministic tetap menghasilkan analisis:
+    `manual_review` bila weighted AI decisive, atau `manual_inconclusive` bila
+    belum decisive. Hasil manual tanpa gate **tidak dikirim ke Discord** dan tidak
+    dianggap sinyal otomatis.
+11. Discord hanya menerima keputusan yang benar-benar `approved`: gate deterministik
+    lolos dan weighted AI mengonfirmasi arah tersebut. Payload mencantumkan regime,
+    weighted share, raw BUY/SELL, confidence per analis, harga, dan ID analisis.
 
 Enam karakter dan bos berjalan, duduk, berdiskusi dengan gelembung vote/alasan,
 lalu kembali ke meja. Dua staf pendukung tetap di meja. Bos memimpin tanpa vote
 tambahan. UI yang terbuka memantau hasil cron dan menampilkan meeting baru;
 ketika web ditutup, analisis dan pengiriman tetap berjalan di server.
+
+**Prompt produksi v3 berada di `src/pipeline/run.js`.** File
+`src/prompt/builder.js` adalah jalur legacy dan tidak dipakai oleh manual/cron
+produksi saat ini.
 
 ## Perhitungan dan parameter
 
@@ -116,9 +148,10 @@ Pages tidak memiliki Cron Trigger langsung. Worker `byga-multivote-scheduler`
 Pages yang ditandatangani. Scheduler hanya memerlukan SESSION_SECRET dan APP_URL;
 tidak perlu menyalin API key provider atau mengakses chart_db.
 
-Lock unik per simbol/timeframe/candle pemicu mencegah manual dan cron memanggil
-AI dua kali. Candle yang sudah selesai tetap tidak diproses ulang setelah setting
-diubah. Run yang ditinggalkan dapat dipulihkan setelah lease sepuluh menit.
+Lock unik per simbol/timeframe/candle pemicu berlaku untuk **AUTO/cron** agar satu
+candle tidak memanggil AI otomatis dua kali. **Manual memakai run key unik**, sehingga
+analisis manual boleh diulang pada candle yang sama dan tidak diblokir oleh run cron.
+Run cron yang ditinggalkan dapat dipulihkan setelah lease sepuluh menit.
 DB aplikasi menyimpan konfigurasi, snapshot ukuran terhitung, hasil vote, run, dan
 outbox. Raw window candle tidak disalin seluruhnya ke DB aplikasi.
 Histori lama tetap tersedia. Run baru memiliki retensi default 30 hari melalui
@@ -167,17 +200,19 @@ diberikan melalui adapter SELECT-only dan pengujian yang menolak operasi tulis.
 | --- | --- |
 | GET /api/market | Candle tervalidasi dan parameter untuk perhitungan browser tanpa AI |
 | GET/PUT /api/settings | Parameter, enam karakter, toggle cron/Discord, status webhook |
-| POST /api/analyze | Hitung ulang server, validasi candle preview, gate, enam vote, outbox |
+| POST /api/analyze | Analisis manual: hitung ulang server, validasi preview, selalu panggil 6 AI, weighted vote; Discord hanya jika gate deterministic juga lolos |
 | GET /api/status | Run terbaru dan jumlah antrean Discord untuk pemantauan UI |
 | GET /api/history | Histori baru serta legacy, termasuk pemeriksaan tersaring |
 | GET /api/analysis/:id | Snapshot kelompok dan hasil vote lengkap |
 | POST /api/cron | Jalur scheduler dengan HMAC; bukan endpoint publik untuk memicu AI |
 
-Status run: `filtered` (tanpa AI), `approved` (≥4/6 searah), `rejected` (dukungan
-kurang), `running`, atau `failed`. NETRAL hanya untuk gate deterministik; vote AI
-tetap BUY/SELL. Kolom legacy `majority_signal` menyimpan NO_TRADE ketika belum ada
-keputusan disetujui; API baru menampilkan keputusan tersebut sebagai null, dengan
-status dan alasan eksplisit.
+Status run: `filtered` (AUTO gagal gate, tanpa AI), `approved` (weighted AI
+mengonfirmasi arah deterministic), `rejected` (AI tidak cukup kuat atau berlawanan),
+`manual_review` (manual tanpa gate tetapi weighted AI decisive),
+`manual_inconclusive`, `running`, atau `failed`. NETRAL hanya untuk perhitungan
+deterministik; vote AI tetap BUY/SELL. Manual tanpa gate tidak pernah masuk Discord.
+Kolom legacy `majority_signal` tetap kompatibel: NO_TRADE dipakai bila belum ada
+arah AI yang decisive.
 
 Kualitas grafis Auto/50%/75%/100% tetap tersedia dan tersimpan pada perangkat.
 Gerakan berjalan dipertahankan; pengujian screenshot memakai pause tab latar

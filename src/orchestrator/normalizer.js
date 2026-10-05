@@ -6,6 +6,12 @@ function clean(input) {
     .trim();
 }
 
+function confidenceValue(value) {
+  const n=typeof value==='string'?Number.parseFloat(value):Number(value);
+  if(!Number.isFinite(n))return null;
+  return Math.max(0,Math.min(100,n<=1?n*100:n));
+}
+
 function fromJson(text) {
   const candidates = [text];
   const block = text.match(/\{[\s\S]*?\}/);
@@ -18,7 +24,8 @@ function fromJson(text) {
       if (["BUY","SELL"].includes(signal)) {
         return {
           signal,
-          reason: String(obj?.reason ?? obj?.REASON ?? "").trim()
+          reason: String(obj?.reason ?? obj?.REASON ?? "").trim(),
+          confidence: confidenceValue(obj?.confidence ?? obj?.CONFIDENCE)
         };
       }
     } catch {}
@@ -29,7 +36,7 @@ function fromJson(text) {
 
 export function parseSignal(input) {
   const text = clean(input);
-  if (!text) return { signal: "ERROR", reason: "" };
+  if (!text) return { signal: "ERROR", reason: "", confidence:null };
 
   const json = fromJson(text);
   if (json) return json;
@@ -43,18 +50,21 @@ export function parseSignal(input) {
     const reason = text.match(
       /(?:^|[\n\r*#>\s])REASON\s*(?::|=|-)?\s*([^\n]+)/i
     )?.[1]?.trim() || "";
+    const confidence = confidenceValue(text.match(
+      /(?:^|[\n\r*#>\s])CONFIDENCE\s*(?::|=|-)?\s*([0-9]+(?:\.[0-9]+)?)/i
+    )?.[1]);
 
-    return { signal, reason };
+    return { signal, reason, confidence };
   }
 
-  // Only accept an unlabeled signal when it is the first meaningful token.
   const leading = text.match(/^(?:[\s*#>_-]*)(BUY|SELL|NO[_ -]?TRADE)\b/i);
   if (leading) {
     return {
       signal: leading[1].toUpperCase().replace(/[ -]/g, "_"),
-      reason: ""
+      reason: "",
+      confidence:null
     };
   }
 
-  return { signal: "ERROR", reason: "" };
+  return { signal: "ERROR", reason: "", confidence:null };
 }

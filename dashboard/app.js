@@ -20,7 +20,7 @@ function openPanel(name) {
 }
 function renderSnapshot(snapshot) {
   const gate=snapshot.gate;
-  $('gate-note').textContent=gate.meeting?'Pemicu meeting: '+gate.direction+' · minimal 2 dari 3 kelompok sepakat.':'Belum ada dua kelompok sepakat BUY/SELL. Analis tetap di meja.';
+  $('gate-note').textContent=gate.meeting?'Gate otomatis: '+gate.direction+' · minimal 2 dari 3 kelompok sepakat.':'Gate otomatis belum lolos. Analisis manual tetap dapat menjalankan enam AI independen.';
   $('snapshot-groups').innerHTML=Object.entries(snapshot.groups).map(([key,g])=>{
     const frames=Object.entries(g.frames).map(([tf,f])=>{
       const m=f.measurements;
@@ -35,17 +35,17 @@ function renderAnalysis(d) {
   if(d.snapshot)renderSnapshot(d.snapshot);
   const v=d.voting||{buy:d.buy_votes,sell:d.sell_votes,success:d.success_count,total_models:d.total_models,error:d.error_count},signal=d.majority_signal||'—';
   $('consensus').textContent=signal;$('consensus').className='metric-value signal-'+signal.toLowerCase();
-  $('consensus-note').textContent=d.status==='approved'?'Disetujui: '+v.support+'/6 mendukung arah awal '+d.initial_direction:d.status==='filtered'?'Tersaring sebelum AI: dua kelompok belum sepakat.':d.status==='rejected'?'Meeting selesai: dukungan '+v.support+'/6, belum mencapai 4.':!d.voting?'Histori alur sebelumnya.':'Menunggu hasil.';
+  $('consensus-note').textContent=d.status==='approved'?'Disetujui: AI berbobot mengonfirmasi arah deterministik '+d.deterministic_direction+' · share '+fmt(v.weighted_share_pct)+'%.':d.status==='manual_review'?'Manual tanpa gate: AI berbobot memilih '+(d.majority_signal||'—')+' · share '+fmt(v.weighted_share_pct)+'%. Tidak diperlakukan sebagai sinyal otomatis.':d.status==='manual_inconclusive'?'Manual selesai, tetapi AI belum mencapai ambang weighted 60%.':d.status==='filtered'?'Auto tersaring sebelum AI: dua kelompok belum sepakat.':d.status==='rejected'?'Meeting selesai: weighted vote tidak cukup atau berlawanan dengan arah deterministik.':!d.voting?'Histori alur sebelumnya.':'Menunggu hasil.';
   $('responses').textContent=v.success||0;$('responses-total').textContent=' / '+(v.total_models??6)+' vote';
   $('buy-count').textContent=v.buy||0;$('sell-count').textContent=v.sell||0;$('neutral-count').textContent=v.error||0;$('vote-total').textContent=v.total_models||0;
   $('buy-bar').style.width=((v.buy||0)/(v.total_models||6)*100)+'%';$('sell-bar').style.width=((v.sell||0)/(v.total_models||6)*100)+'%';
   $('duration').textContent=fmt((d.duration_ms||0)/1000);$('duration-unit').textContent=' sec';
-  $('last-updated').textContent='WIB · '+date(d.created_at);$('result-status').textContent=({approved:'DISETUJUI',rejected:'BELUM DISETUJUI',filtered:'TERSARING'})[d.status]||'MEMPROSES';
+  $('last-updated').textContent='WIB · '+date(d.created_at);$('result-status').textContent=({approved:'DISETUJUI',rejected:'BELUM DISETUJUI',filtered:'TERSARING',manual_review:'MANUAL REVIEW',manual_inconclusive:'MANUAL INKONKLUSIF'})[d.status]||'MEMPROSES';
   $('result-empty').classList.toggle('hidden',!!d.results?.length);
   $('result-empty').textContent=d.meeting?'Menunggu vote analis.':'Tidak ada panggilan AI pada pemeriksaan ini.';
   const delivery=d.delivery?.state;
-  $('discord-status').textContent=!d.voting?'':!v.approved?'Discord: tidak dikirim; syarat 4/6 belum terpenuhi.':delivery==='sent'?'Discord: terkirim.':delivery==='not_configured'?'Discord: webhook belum diatur.':delivery==='disabled'?'Discord: dinonaktifkan.':delivery==='expired'?'Discord: sinyal kedaluwarsa sebelum terkirim.':delivery==='failed'?'Discord: pengiriman gagal; periksa webhook.':delivery==='pending'?'Discord: menunggu percobaan ulang.':'Discord: lihat status antrean.';
-  $('model-results').innerHTML=(d.results||[]).map(r=>'<div class="model-row"><span class="model-avatar">'+escape((r.analyst_name||r.provider).slice(0,2))+'</span><span class="model-info"><b>'+escape(r.analyst_name||r.provider_label)+'</b><small>'+escape(labels[r.role]||r.role)+' · '+escape(r.provider_label)+' · '+escape(r.model||'')+'</small><em>'+escape(r.reason||r.error||'')+'</em></span><span class="signal-pill '+(r.signal||'error').toLowerCase()+'">'+escape(r.status==='success'?r.signal:'ERROR')+'</span></div>').join('');
+  $('discord-status').textContent=!d.voting?'':d.delivery?.eligible===false?'Discord: tidak dikirim · '+escape(d.delivery.reason||'tidak eligible')+'.':!v.approved?'Discord: tidak dikirim; keputusan belum disetujui.':delivery==='sent'?'Discord: terkirim.':delivery==='not_configured'?'Discord: webhook belum diatur.':delivery==='disabled'?'Discord: dinonaktifkan.':delivery==='expired'?'Discord: sinyal kedaluwarsa sebelum terkirim.':delivery==='failed'?'Discord: pengiriman gagal; periksa webhook.':delivery==='pending'?'Discord: menunggu percobaan ulang.':'Discord: lihat status antrean.';
+  $('model-results').innerHTML=(d.results||[]).map(r=>{const w=d.analyst_weights?.[r.analyst_id||r.vote_group];const perf=w?' · weight '+escape(w.weight)+' · n '+escape(w.samples)+(w.hit_rate_pct!=null?' · hit '+escape(w.hit_rate_pct)+'%':''):'';return '<div class="model-row"><span class="model-avatar">'+escape((r.analyst_name||r.provider).slice(0,2))+'</span><span class="model-info"><b>'+escape(r.analyst_name||r.provider_label)+'</b><small>'+escape(labels[r.role]||r.role)+' · '+escape(r.provider_label)+' · '+escape(r.model||'')+(r.confidence!=null?' · confidence '+escape(r.confidence)+'%':'')+perf+'</small><em>'+escape(r.reason||r.error||'')+'</em></span><span class="signal-pill '+(r.signal||'error').toLowerCase()+'">'+escape(r.status==='success'?r.signal:'ERROR')+'</span></div>';}).join('');
 }
 async function loadSettings() {
   const d=await api('/api/settings');settings=d.settings;
@@ -70,7 +70,7 @@ async function loadHistory() {
 }
 async function playMeeting(result) {
   running=true;updateButton();$('office-panel').close();$('analyze-label').textContent='Meeting berlangsung';
-  message('Dua kelompok sepakat '+result.initial_direction+'. Enam analis dan bos menuju ruang meeting.');
+  message(result.gate_passed?'Gate '+result.deterministic_direction+' lolos. Enam analis independen dan bos menuju ruang meeting.':'Mode manual: gate otomatis belum lolos, tetapi enam analis independen tetap menuju ruang meeting.');
   await window.bygaOffice.beginMeeting();renderAnalysis(result);await window.bygaOffice.discuss(result);
   $('analyze-label').textContent='Kembali ke meja';
 }
@@ -79,12 +79,12 @@ async function runManual() {
   running=true;updateButton();$('analyze-label').textContent='Menghitung…';message('Membaca chart_db dan menghitung snapshot di web tanpa AI.');
   try {
     const snapshot=await previewCalculation();
-    message(snapshot.gate.meeting?'Pemicu '+snapshot.gate.direction+' terdeteksi. Meminta enam vote AI.':'Belum ada pemicu. Menyimpan hasil pemeriksaan tanpa panggilan AI.');
+    message(snapshot.gate.meeting?'Gate '+snapshot.gate.direction+' terdeteksi. Meminta enam vote AI independen.':'Gate otomatis belum lolos. Mode manual tetap meminta enam vote AI independen.');
     const result=await api('/api/analyze',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({candle_times:snapshot.candle_times}),signal:AbortSignal.timeout(150000)});
     if(result.snapshot){lastSeen=result.id;renderAnalysis(result);}void loadHistory();
     if(result.duplicate)message(result.status==='running'?'Candle ini sedang diproses cron. Hasil akan muncul otomatis.':'Candle ini sudah diperiksa. Tidak ada panggilan AI atau pengiriman Discord ulang.');
     else if(result.meeting){await playMeeting(result);return;}
-    else message('Tidak ada dua kelompok sepakat. Analis tetap di meja.');
+    else message('Analisis manual selesai.');
   }catch(e){message(e.name==='TimeoutError'?'Permintaan melewati batas waktu. Periksa histori sebelum mencoba lagi.':e.message,'error');}
   if(!window.bygaOffice?.busy){running=false;updateButton();$('analyze-label').textContent='Mulai Analisis';}
 }
