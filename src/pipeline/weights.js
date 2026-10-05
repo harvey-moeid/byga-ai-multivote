@@ -41,13 +41,14 @@ export async function loadAnalystWeights(env,snapshot,settings,{horizonHours=2,m
     const rows=(vq.results||[]).flatMap(v=>{const a=byId.get(v.analysis_id);return a?[{...v,...a}]:[]});
     if(!rows.length)return neutral(analysts);
 
-    const minTarget=Math.min(...rows.map(r=>r.target)),maxTarget=Math.max(...rows.map(r=>r.target));
+    const outcomeOpen=target=>Math.floor(target/interval)*interval-interval;
+    const minOpen=Math.min(...rows.map(r=>outcomeOpen(r.target))),maxOpen=Math.max(...rows.map(r=>outcomeOpen(r.target)));
     const prices=await env.CHART_DB.prepare(`SELECT open_time,close FROM candles
       WHERE symbol=? AND timeframe=? AND is_closed=1 AND open_time BETWEEN ? AND ?
-      ORDER BY open_time ASC`).bind('BTCUSDT',frame,Math.floor(minTarget/interval)*interval,Math.floor(maxTarget/interval)*interval).all();
+      ORDER BY open_time ASC`).bind('BTCUSDT',frame,minOpen,maxOpen).all();
     const closeByOpen=new Map((prices.results||[]).map(c=>[Number(c.open_time),Number(c.close)]));
     const evaluated=rows.flatMap(r=>{
-      const close=closeByOpen.get(Math.floor(r.target/interval)*interval);
+      const close=closeByOpen.get(outcomeOpen(r.target));
       if(!Number.isFinite(close))return [];
       const hit=r.signal==='BUY'?close>Number(r.last_price):close<Number(r.last_price);
       return [{...r,hit}];
