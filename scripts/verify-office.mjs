@@ -115,6 +115,24 @@ try {
   await mobile.selectOption('#quality','low');
   await mobile.waitForTimeout(800);
   assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  const autoButton=await mobile.evaluate(()=>{
+    const el=document.querySelector('#auto-camera'),rect=el.getBoundingClientRect();
+    return {clientWidth:el.clientWidth,scrollWidth:el.scrollWidth,left:rect.left,right:rect.right,width:rect.width,viewport:innerWidth};
+  });
+  assert(autoButton.scrollWidth<=autoButton.clientWidth,'AUTO label must fit inside its button');
+  assert(autoButton.left>=0&&autoButton.right<=autoButton.viewport,'AUTO button must stay inside mobile viewport');
+  await mobile.click('[data-panel="providers"]');
+  await mobile.click('#edit-analysts');
+  await mobile.locator('[aria-label="Provider analis 1"]').waitFor();
+  const settingsLayout=await mobile.evaluate(()=>{
+    const modal=document.querySelector('#pipeline-settings'),card=modal.querySelector('.pipeline-settings-card'),body=modal.querySelector('.pipeline-settings-body');
+    const rect=card.getBoundingClientRect();
+    return {left:rect.left,right:rect.right,width:rect.width,viewport:innerWidth,bodyClient:body.clientWidth,bodyScroll:body.scrollWidth};
+  });
+  assert(settingsLayout.left>=0&&settingsLayout.right<=settingsLayout.viewport,'Settings card must stay inside mobile viewport');
+  assert(settingsLayout.bodyScroll<=settingsLayout.bodyClient,'Settings body must not overflow horizontally');
+  await mobile.getByRole('button',{name:'Tutup',exact:true}).click();
+  await mobile.click('#panel-close');
   const canvasBox=await mobile.locator('#office-canvas canvas').boundingBox();
   assert(canvasBox.width>300 && canvasBox.height>400);
   await capture(mobile,'mobile.png');
