@@ -118,6 +118,23 @@ ketika provider eksternal tidak tersedia. Provider/model bisa diganti dari web.
 `/api/models` adalah pengaturan default provider lama; alur baru memakai
 `/api/settings` dengan model per karakter.
 
+### Provider Health
+
+Menu **Setting → Provider Health** menampilkan status operasional tiap provider tanpa
+melakukan ping AI tambahan. Health dihitung dari maksimal **12 panggilan terbaru**
+yang memang terjadi pada analisis nyata:
+
+- **Healthy**: panggilan terbaru sukses dan success rate ≥80%.
+- **Degraded**: provider masih bekerja tetapi recent error/timeout mulai terlihat.
+- **Down**: tiga kegagalan beruntun, atau success rate <50% dengan minimal 4 sampel.
+- **Ready**: secret/binding tersedia tetapi belum ada histori panggilan.
+- **Not configured**: secret/binding provider belum tersedia.
+
+UI juga menampilkan jumlah sampel, success rate, latency rata-rata panggilan sukses,
+waktu penggunaan terakhir dalam WIB, dan error code terakhir. Pesan error mentah,
+API key, token, dan secret tidak pernah dikirim ke browser. Dropdown provider pada
+setiap analis ikut menampilkan status health terbaru.
+
 ## Discord dan keamanan
 
 Masukkan URL webhook pada **Setting → Cron dan Discord**. Field ini write only:
@@ -199,7 +216,7 @@ diberikan melalui adapter SELECT-only dan pengujian yang menolak operasi tulis.
 | Endpoint | Fungsi |
 | --- | --- |
 | GET /api/market | Candle tervalidasi dan parameter untuk perhitungan browser tanpa AI |
-| GET/PUT /api/settings | Parameter, enam karakter, toggle cron/Discord, status webhook |
+| GET/PUT /api/settings | Parameter, enam karakter, Provider Health, toggle cron/Discord, status webhook |
 | POST /api/analyze | Analisis manual: hitung ulang server, validasi preview, selalu panggil 6 AI, weighted vote; Discord hanya jika gate deterministic juga lolos |
 | GET /api/status | Run terbaru dan jumlah antrean Discord untuk pemantauan UI |
 | GET /api/history | Histori baru serta legacy, termasuk pemeriksaan tersaring |
