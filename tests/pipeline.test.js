@@ -112,7 +112,9 @@ describe('settings, authentication, and Discord delivery',()=>{
     const {env,db,settings}=use();const url='https://discord.com/api/webhooks/123/unit_test_token';
     const put=await onRequestPut({env,request:new Request('https://x/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({settings,discord_webhook:url})})});expect(put.status).toBe(200);
     const encrypted=db.prepare("SELECT value FROM app_settings WHERE key='discord_webhook_encrypted'").get().value;expect(encrypted).not.toContain('unit_test_token');expect(await openWebhook(encrypted,env.SESSION_SECRET)).toBe(url);
-    const get=await onRequestGet({env});expect(await get.text()).not.toContain('unit_test_token');
+    const get=await onRequestGet({env});const getText=await get.text();expect(getText).not.toContain('unit_test_token');
+    const settingsPayload=JSON.parse(getText);expect(settingsPayload.provider_health).toHaveLength(settingsPayload.providers.length);
+    expect(settingsPayload.provider_health.find(x=>x.provider==='workers-ai').state).toBe('READY');
     await expect(sealWebhook('https://example.com/webhook','x')).rejects.toThrow();await expect(openWebhook(encrypted,'wrong')).rejects.toThrow();
   });
   it('requires a fresh HMAC covering the exact cron body',async()=>{
