@@ -2,13 +2,13 @@
 <html lang="id">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#f8faf8"><meta name="description" content="BYGA Trading Office — kantor analis AI 3D interaktif">
+<meta name="theme-color" content="#f8faf8"><link rel="manifest" href="/manifest.webmanifest"><meta name="description" content="BYGA Trading Office — kantor analis AI 3D interaktif">
 <title>BYGA Trading Office</title><link rel="icon" type="image/png" sizes="64x64" href="/favicon.png"><link rel="apple-touch-icon" href="/byga-logo.png"><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/office.css">
 </head>
 <body class="office-app admin-office">
 <header class="office-header">
   <a href="/admin" class="office-brand" aria-label="BYGA Trading Office"><img class="brand-logo" src="/byga-logo.png" alt="" width="42" height="42"><span><b>BYGA <span>TRADING OFFICE</span></b><small>BTCUSDT.P · H1 / M15 / M5</small></span></a>
-  <div class="top-actions"><label class="quality-control"><span>Kualitas</span><select id="quality" aria-label="Kualitas grafis"><option value="auto">Otomatis</option><option value="low">Hemat · 50%</option><option value="medium">Seimbang · 75%</option><option value="high">Tinggi · 100%</option></select></label><button id="logout-btn" class="office-icon" title="Keluar" aria-label="Keluar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 5H5v14h4M13 8l4 4-4 4M9 12h11"/></svg></button></div>
+  <div class="top-actions"><button id="install-app" class="office-icon install-app" type="button" title="Install aplikasi" aria-label="Install BYGA Trading Office" hidden>APP</button><label class="quality-control"><span>Kualitas</span><select id="quality" aria-label="Kualitas grafis"><option value="auto">Otomatis</option><option value="low">Hemat · 50%</option><option value="medium">Seimbang · 75%</option><option value="high">Tinggi · 100%</option><option value="ultra">Ultra · GPU+</option></select></label><button id="logout-btn" class="office-icon" title="Keluar" aria-label="Keluar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 5H5v14h4M13 8l4 4-4 4M9 12h11"/></svg></button></div>
 </header>
 <main id="office-stage" aria-label="Kantor trading 3D">
   <div id="office-canvas"></div>
@@ -42,4 +42,4 @@
   <section data-panel-content="history" hidden><div class="history-toolbar"><span>Waktu Indonesia Barat</span><button id="refresh-history">Refresh</button></div><div class="office-history-scroll"><table><thead><tr><th>ID</th><th>Waktu · WIB</th><th>Market</th><th>Sinyal</th><th>Vote</th><th></th></tr></thead><tbody id="history-body"><tr><td colspan="6">Memuat riwayat…</td></tr></tbody></table></div></section>
 </dialog>
 <script type="module" src="/app.bundle.js"></script><script type="module" src="/office.bundle.js"></script>
-</body></html>
+<script type="module" src="/pwa.js"></script>\n</body></html>
