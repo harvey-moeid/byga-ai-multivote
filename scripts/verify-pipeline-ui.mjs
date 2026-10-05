@@ -7,7 +7,7 @@ import {defaultSettings} from '../src/pipeline/config.js';
 import {calculateSnapshot} from '../src/pipeline/calculate.js';
 import {candles} from '../tests/helpers/pipeline-db.js';
 const settings=defaultSettings({AI:{run(){}}});
-const market={symbol:'BTCUSDT.P',series:Object.fromEntries(['H1','M15','M5'].map(tf=>[tf,candles(tf)]))};
+const market={symbol:'BTCUSDT.P',series:Object.fromEntries(['H1','M15','M5'].map(tf=>[tf,candles(tf,250,'flat')]))};
 const snapshot=calculateSnapshot(market,settings);
 let latest=null,polls=0,manuals=0;
 const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||undefined,args:['--no-sandbox']});
