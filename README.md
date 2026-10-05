@@ -174,6 +174,27 @@ outbox. Raw window candle tidak disalin seluruhnya ke DB aplikasi.
 Histori lama tetap tersedia. Run baru memiliki retensi default 30 hari melalui
 cron; ubah `PIPELINE_RETENTION_DAYS` (1–365) bila diperlukan. chart_db tidak dibersihkan.
 
+## PWA dan Adaptive 3D
+
+Web dapat di-install sebagai **PWA** melalui browser yang mendukung. Manifest,
+ikon 192/512, service worker, dan tombol install disertakan. Asset UI dan bundle
+3D dicache agar pembukaan berikutnya lebih cepat dan tetap memiliki shell dasar
+ketika koneksi putus. Request `/api/*` **tidak pernah dicache** oleh service
+worker, sehingga data analisis, autentikasi, dan hasil trading tetap berasal dari
+server.
+
+Mode kualitas sekarang: **Auto / Hemat / Seimbang / Tinggi / Ultra**. Auto memilih
+tier awal dari lebar layar, device memory, jumlah core, DPR, dan Data Saver, lalu
+menyesuaikan resolution scale secara bertahap berdasarkan frame budget. Bila
+perangkat mulai berat, render scale diturunkan lebih dulu sebelum turun tier;
+bila stabil beberapa window, scale/tier dinaikkan lagi. Mode Ultra membuka DPR
+lebih tinggi dan shadow map lebih besar untuk perangkat yang kuat. Pilihan manual
+tetap disimpan di perangkat.
+
+Render loop berhenti efektif saat tab/background tidak aktif, WebGL memakai
+`powerPreference: high-performance`, furnitur statis tetap dibatch, lampu dan
+shadow disesuaikan per tier, dan bundle 3D dipreload untuk mempercepat first paint.
+
 ## Build dan deploy
 
 Node.js **22+**. GitHub CI menjalankan unit test, build bundle lokal, dan tes
