@@ -25,8 +25,10 @@ enam karakter analis AI, cron lima menit, dan notifikasi Discord bersyarat.
    tervalidasi, walaupun gate 2/3 tidak lolos. Manual boleh dijalankan berulang pada
    candle yang sama, misalnya setelah mengganti provider/model atau parameter.
 7. Keenam AI tetap independen: dua hanya menerima SMC/ICT, dua hanya indikator,
-   dan dua hanya volume. Prompt **tidak pernah mengirim arah gate/initial_direction**.
-   AI menerima regime, peran timeframe, prioritas keputusan, dan snapshot kelompoknya
+   dan dua hanya volume. Dalam setiap pasangan, slot 1 memakai lens **base-case** dan
+   slot 2 **adversarial/invalidation-first** untuk mengurangi correlated error.
+   Prompt **tidak pernah mengirim arah gate/initial_direction**. AI menerima regime,
+   peran timeframe, prioritas keputusan, review lens, dan snapshot kelompoknya
    saja. SMC/ICT dikompakkan ke event terbaru yang relevan agar token tidak terbuang.
    Output wajib BUY/SELL + confidence 0–100 + alasan maksimal dua kalimat.
 8. Vote memakai **adaptive weighted voting**. Reliability diukur dari hasil historis
