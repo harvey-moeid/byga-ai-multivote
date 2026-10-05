@@ -1,8 +1,13 @@
 import { describe,it,expect } from 'vitest';
-import { scoreReliability } from '../src/pipeline/weights.js';
+import { scoreReliability,closedOutcomeOpen } from '../src/pipeline/weights.js';
 import { meetingDecision } from '../src/pipeline/calculate.js';
 
 describe('adaptive analyst weighting',()=>{
+  it('scores only the last candle already closed at the outcome horizon',()=>{
+    const interval=300000,target=10*interval+60000;
+    expect(closedOutcomeOpen(target,interval)).toBe(9*interval);
+    expect(closedOutcomeOpen(10*interval,interval)).toBe(9*interval);
+  });
   it('falls back to neutral weight until enough outcomes exist',()=>{
     const r=scoreReliability(Array.from({length:8},()=>({hit:true})));
     expect(r.weight).toBe(1);expect(r.ready).toBe(false);expect(r.samples).toBe(8);
