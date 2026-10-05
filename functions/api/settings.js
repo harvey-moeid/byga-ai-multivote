@@ -2,9 +2,12 @@ import { loadSettings,validateSettings,providerAvailable } from '../../src/pipel
 import { PROVIDERS } from '../../src/providers/registry.js';
 import { sealWebhook,webhookConfigured } from '../../src/pipeline/discord.js';
 import { json,pipelineError } from '../../src/pipeline/http.js';
+import { getProviderHealth } from '../../src/lib/providerHealth.js';
 export async function onRequestGet({env}) {
-  try{return json(200,{settings:await loadSettings(env),providers:PROVIDERS.map(p=>({provider:p.meta.provider,label:p.meta.providerLabel,configured:providerAvailable(p,env),default_model:String(env[p.meta.modelEnv]||p.meta.modelId)})),webhook_configured:await webhookConfigured(env),cron:'*/5 * * * *'});}
-  catch(error){return pipelineError(error);}
+  try{
+    const providers=PROVIDERS.map(p=>({provider:p.meta.provider,label:p.meta.providerLabel,configured:providerAvailable(p,env),default_model:String(env[p.meta.modelEnv]||p.meta.modelId)}));
+    return json(200,{settings:await loadSettings(env),providers,provider_health:await getProviderHealth(env.DB,providers),webhook_configured:await webhookConfigured(env),cron:'*/5 * * * *'});
+  } catch(error){return pipelineError(error);}
 }
 export async function onRequestPut({env,request}) {
   if(!request.headers.get('content-type')?.includes('application/json'))return json(415,{error:'Gunakan application/json.'});
