@@ -44,3 +44,4 @@
 @media(max-width:600px){.view-controls .auto-camera{width:auto;min-width:44px;max-width:48px;padding:6px 5px;font-size:7px;line-height:1;letter-spacing:.02em}}
 
 @media(display-mode:standalone){.install-app{display:none!important}}
+\n@media(max-width:360px){.office-brand small{display:none}.quality-control select{max-width:82px}.office-header{padding-left:9px;padding-right:9px}}\n
