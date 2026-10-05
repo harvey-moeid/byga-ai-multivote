@@ -1,5 +1,5 @@
-// Browser regression for a manual request racing a running cron. Render the
-// actual app bundle/DOM while stubbing only 3D movement (verified separately).
+// Browser regression for independent manual analysis while cron status polling
+// continues. Render the actual app bundle/DOM while stubbing only 3D movement.
 import {chromium} from 'playwright';
 import assert from 'node:assert/strict';
 import {server} from './preview-office.mjs';
@@ -21,7 +21,7 @@ try {
     if(path==='/api/settings')return r.fulfill({json:{settings,providers:[{provider:'workers-ai',label:'Workers AI',configured:true}],webhook_configured:false}});
     if(path==='/api/market')return r.fulfill({json:{settings,market}});
     if(path==='/api/status'){polls++;return r.fulfill({json:{latest:latest?{state:'completed',result:latest}:null,discord:[]}});}
-    if(path==='/api/analyze'){manuals++;return r.fulfill({json:{id:'RUNNING-CRON',status:'running',meeting:false,duplicate:true}});}
+    if(path==='/api/analyze'){manuals++;return r.fulfill({json:{id:'MANUAL-1',created_at:new Date().toISOString(),status:'manual_review',mode:'manual',meeting:true,gate_passed:false,initial_direction:'NEUTRAL',deterministic_direction:'NEUTRAL',majority_signal:'BUY',snapshot,results:[],voting:{approved:false,support:4,buy:4,sell:2,total_models:6,success:6,weighted_share_pct:66.67},delivery:{state:'idle',eligible:false,reason:'MANUAL_WITHOUT_DETERMINISTIC_GATE'}}});}
     return r.fulfill({json:{items:[]}});
   });
   const initialStatus=page.waitForResponse('**/api/status');
@@ -30,14 +30,13 @@ try {
   await page.waitForFunction(()=>!document.querySelector('#analyze-btn').disabled);
   assert(polls>0,'Initial cron status must be loaded');
   await page.click('#analyze-btn');
-  await page.waitForFunction(()=>document.querySelector('#run-message').textContent.includes('sedang diproses cron'));
-  assert.equal(await page.evaluate(()=>window.mockMeetings),0);
-  latest={id:'RUNNING-CRON',created_at:new Date().toISOString(),status:'approved',meeting:true,initial_direction:'BUY',majority_signal:'BUY',snapshot,results:[],voting:{approved:true,support:4,buy:4,sell:2,total_models:6,success:6},delivery:{state:'sent'}};
   await page.waitForFunction(()=>window.mockMeetings===1);
+  assert.equal(manuals,1,'Manual analysis must run independently of cron polling');
+  latest={id:'RUNNING-CRON',created_at:new Date().toISOString(),status:'approved',meeting:true,gate_passed:true,initial_direction:'BUY',deterministic_direction:'BUY',majority_signal:'BUY',snapshot,results:[],voting:{approved:true,support:4,buy:4,sell:2,total_models:6,success:6,weighted_share_pct:66.67},delivery:{state:'sent'}};
   await page.waitForFunction(()=>document.querySelector('#consensus').textContent==='BUY');
   await page.waitForTimeout(800);
   assert.equal(await page.evaluate(()=>window.mockMeetings),1,'Repeated polls must not replay the same meeting');
   assert.equal(manuals,1,'Polling completed cron results must not call AI again');
   assert.match(await page.locator('#discord-status').textContent(),/terkirim/);
-  console.log('PASS: a manual/cron race displays and animates the completed result exactly once.');
+  console.log('PASS: manual analysis runs independently while cron status polling continues.');
 }finally{await browser.close();server.close();}
