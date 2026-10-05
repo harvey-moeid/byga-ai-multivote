@@ -1,4 +1,5 @@
-const VERSION = 'byga-pwa-v2';
+const VERSION = 'byga-pwa-v3';
+const CACHE_PREFIX = 'byga-pwa-';
 const STATIC_CACHE = VERSION + '-static';
 const RUNTIME_CACHE = VERSION + '-runtime';
 const CORE = [
@@ -32,7 +33,7 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.filter(key => key !== STATIC_CACHE && key !== RUNTIME_CACHE).map(key => caches.delete(key)));
+    await Promise.all(keys.filter(key => key.startsWith(CACHE_PREFIX) && key !== STATIC_CACHE && key !== RUNTIME_CACHE).map(key => caches.delete(key)));
     await self.clients.claim();
   })());
 });
