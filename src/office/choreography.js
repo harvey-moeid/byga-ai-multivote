@@ -104,9 +104,11 @@ export const QUALITY = {
 };
 
 export function initialQuality({ width, memory = 4, cores = 4, dpr = 1, saveData = false }) {
-  if (saveData || memory < 4 || cores <= 4) return 'low';
-  if (width <= 600) return memory >= 6 && cores >= 8 ? 'high' : 'medium';
-  if (width >= 1000 && memory >= 8 && cores >= 8 && dpr <= 2.5) return 'ultra';
+  if (saveData) return 'low';
+  if (width <= 600 || memory < 4 || cores <= 4) return 'medium';
+  // Start at High even on powerful desktop hardware. Auto mode promotes to
+  // Ultra only after sustained measured headroom, avoiding a heavy first frame.
+  if (width >= 1000 && memory >= 8 && cores >= 8 && dpr <= 2.5) return 'high';
   return memory >= 6 && cores >= 6 ? 'high' : 'medium';
 }
 
