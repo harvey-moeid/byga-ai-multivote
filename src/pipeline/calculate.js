@@ -160,7 +160,7 @@ export function meetingDecision(results,deterministicDirection,{weights={},mode=
   const scores={BUY:0,SELL:0};
   const weighted_results=valid.map(r=>{
     const reliability=voteClamp(Number(weights?.[r.analyst_id]?.weight??weights?.[r.vote_group]?.weight??1)||1,.8,1.2);
-    const confidence=Number.isFinite(Number(r.confidence))?voteClamp(Number(r.confidence),0,100):null;
+    const confidence=r.confidence!=null&&Number.isFinite(Number(r.confidence))?voteClamp(Number(r.confidence),0,100):null;
     const confidenceFactor=confidence==null?1:.9+(confidence/100)*.2;
     const score=reliability*confidenceFactor;scores[r.signal]+=score;
     return {analyst_id:r.analyst_id||r.vote_group,signal:r.signal,confidence,reliability_weight:reliability,score:Number(score.toFixed(3))};
