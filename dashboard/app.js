@@ -40,7 +40,7 @@ function renderAnalysis(d) {
   $('buy-count').textContent=v.buy||0;$('sell-count').textContent=v.sell||0;$('neutral-count').textContent=v.error||0;$('vote-total').textContent=v.total_models||0;
   $('buy-bar').style.width=((v.buy||0)/(v.total_models||6)*100)+'%';$('sell-bar').style.width=((v.sell||0)/(v.total_models||6)*100)+'%';
   $('duration').textContent=fmt((d.duration_ms||0)/1000);$('duration-unit').textContent=' sec';
-  $('last-updated').textContent='WIB · '+date(d.created_at);$('result-status').textContent=({approved:'DISETUJUI',rejected:'BELUM DISETUJUI',filtered:'TERSARING'})[d.status]||'MEMPROSES';
+  $('last-updated').textContent='WIB · '+date(d.created_at);$('result-status').textContent=({approved:'DISETUJUI',rejected:'BELUM DISETUJUI',filtered:'TERSARING',manual_review:'MANUAL REVIEW',manual_inconclusive:'MANUAL INKONKLUSIF'})[d.status]||'MEMPROSES';
   $('result-empty').classList.toggle('hidden',!!d.results?.length);
   $('result-empty').textContent=d.meeting?'Menunggu vote analis.':'Tidak ada panggilan AI pada pemeriksaan ini.';
   const delivery=d.delivery?.state;
