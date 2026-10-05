@@ -2,6 +2,7 @@ import { FRAMES } from './config.js';
 
 const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
 const neutral=(analysts=[])=>Object.fromEntries(analysts.map(a=>[a.id,{weight:1,samples:0,hit_rate_pct:null,scope:'neutral'}]));
+export const closedOutcomeOpen=(target,interval)=>Math.floor(target/interval)*interval-interval;
 
 function regimeFromRow(row) {
   try {
@@ -41,14 +42,13 @@ export async function loadAnalystWeights(env,snapshot,settings,{horizonHours=2,m
     const rows=(vq.results||[]).flatMap(v=>{const a=byId.get(v.analysis_id);return a?[{...v,...a}]:[]});
     if(!rows.length)return neutral(analysts);
 
-    const outcomeOpen=target=>Math.floor(target/interval)*interval-interval;
-    const minOpen=Math.min(...rows.map(r=>outcomeOpen(r.target))),maxOpen=Math.max(...rows.map(r=>outcomeOpen(r.target)));
+    const minOpen=Math.min(...rows.map(r=>closedOutcomeOpen(r.target,interval))),maxOpen=Math.max(...rows.map(r=>closedOutcomeOpen(r.target,interval)));
     const prices=await env.CHART_DB.prepare(`SELECT open_time,close FROM candles
       WHERE symbol=? AND timeframe=? AND is_closed=1 AND open_time BETWEEN ? AND ?
       ORDER BY open_time ASC`).bind('BTCUSDT',frame,minOpen,maxOpen).all();
     const closeByOpen=new Map((prices.results||[]).map(c=>[Number(c.open_time),Number(c.close)]));
     const evaluated=rows.flatMap(r=>{
-      const close=closeByOpen.get(outcomeOpen(r.target));
+      const close=closeByOpen.get(closedOutcomeOpen(r.target,interval));
       if(!Number.isFinite(close))return [];
       const hit=r.signal==='BUY'?close>Number(r.last_price):close<Number(r.last_price);
       return [{...r,hit}];
