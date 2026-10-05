@@ -20,21 +20,25 @@ export function scoreReliability(rows=[], { minSamples=12, priorSamples=20 }={})
   return {weight:Number(weight.toFixed(3)),samples:rows.length,hit_rate_pct:Number((raw*100).toFixed(2)),ready:true};
 }
 
-export async function loadAnalystWeights(env,snapshot,settings,{horizonHours=2,maxRows=720,minSamples=12}={}) {
+export async function loadAnalystWeights(env,snapshot,settings,{horizonHours=2,maxAnalyses=90,minSamples=12}={}) {
   const analysts=settings?.analysts||[];
   if(!env?.DB?.prepare||!env?.CHART_DB?.prepare||!analysts.length)return neutral(analysts);
   try {
     const horizonMs=horizonHours*3600000,frame=settings.calculation.frames.trigger,interval=FRAMES[frame];
     const cutoff=new Date(Date.now()-horizonMs).toISOString();
-    const q=await env.DB.prepare(`SELECT r.vote_group,r.provider,r.signal,a.created_at,a.last_price,a.timeframe,a.market_snapshot
-      FROM analysis_results r JOIN analyses a ON a.id=r.analysis_id
-      WHERE r.status='success' AND r.signal IN ('BUY','SELL') AND a.created_at<=?
-      ORDER BY a.created_at DESC LIMIT ?`).bind(cutoff,maxRows).all();
+    const aq=await env.DB.prepare(`SELECT id,created_at,last_price,timeframe,market_snapshot FROM analyses
+      WHERE created_at<=? ORDER BY created_at DESC LIMIT ?`).bind(cutoff,maxAnalyses).all();
     const currentTimeframe=Object.values(settings.calculation.frames).join('/');
-    const rows=(q.results||[]).filter(r=>r.timeframe===currentTimeframe&&Number(r.last_price)>0)
+    const analyses=(aq.results||[]).filter(r=>r.timeframe===currentTimeframe&&Number(r.last_price)>0)
       .map(r=>({...r,target:Date.parse(r.created_at)+horizonMs,regime:regimeFromRow(r)}))
       .filter(r=>Number.isFinite(r.target));
-    if(!rows.length)return neutral(analysts);
+    if(!analyses.length)return neutral(analysts);
+    const byId=new Map(analyses.map(a=>[a.id,a])),oldest=analyses.at(-1)?.created_at;
+    const vq=await env.DB.prepare(`SELECT r.analysis_id,r.vote_group,r.provider,r.signal
+      FROM analysis_results r JOIN analyses a ON a.id=r.analysis_id
+      WHERE r.status='success' AND r.signal IN ('BUY','SELL') AND a.created_at>=? AND a.created_at<=?
+      ORDER BY a.created_at DESC`).bind(oldest,cutoff).all();
+    const rows=(vq.results||[]).flatMap(v=>{const a=byId.get(v.analysis_id);return a?[{...v,...a}]:[]});
 
     const minTarget=Math.min(...rows.map(r=>r.target)),maxTarget=Math.max(...rows.map(r=>r.target));
     const prices=await env.CHART_DB.prepare(`SELECT open_time,close FROM candles
