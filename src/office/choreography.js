@@ -97,19 +97,25 @@ export function advanceActors(actors, dt) {
 }
 
 export const QUALITY = {
-  low: { scale: .5, fps: 30, shadows: false, mapSize: 512 },
-  medium: { scale: .75, fps: 30, shadows: true, mapSize: 1024 },
-  high: { scale: 1, fps: 60, shadows: true, mapSize: 2048 }
+  low:    { scale: .50, fps: 30, shadows: false, mapSize: 512,  lights: 0, maxDpr: 1.35, shadowType: 'basic' },
+  medium: { scale: .75, fps: 30, shadows: true,  mapSize: 1024, lights: 2, maxDpr: 1.55, shadowType: 'basic' },
+  high:   { scale: 1.00, fps: 60, shadows: true,  mapSize: 1536, lights: 4, maxDpr: 1.85, shadowType: 'soft' },
+  ultra:  { scale: 1.00, fps: 60, shadows: true,  mapSize: 2048, lights: 4, maxDpr: 2.25, shadowType: 'soft' }
 };
 
-export function initialQuality({ width, memory = 4, cores = 4 }) {
-  return width <= 600 || memory < 4 || cores <= 4 ? 'medium' : 'high';
+export function initialQuality({ width, memory = 4, cores = 4, dpr = 1, saveData = false }) {
+  if (saveData || memory < 4 || cores <= 4) return 'low';
+  if (width <= 600) return memory >= 6 && cores >= 8 ? 'high' : 'medium';
+  if (width >= 1000 && memory >= 8 && cores >= 8 && dpr <= 2.5) return 'ultra';
+  return memory >= 6 && cores >= 6 ? 'high' : 'medium';
 }
 
 export function adaptiveQuality(current, averageMs) {
-  const order = ['low', 'medium', 'high'];
+  const order = ['low', 'medium', 'high', 'ultra'];
   const index = order.indexOf(current);
-  if (averageMs > (current === 'high' ? 30 : 43) && index > 0) return order[index - 1];
-  if (averageMs < 21 && index < 2) return order[index + 1];
+  const downThreshold = current === 'ultra' ? 23 : current === 'high' ? 27 : 43;
+  const upThreshold = current === 'low' ? 19 : current === 'medium' ? 20 : 15.5;
+  if (averageMs > downThreshold && index > 0) return order[index - 1];
+  if (averageMs < upThreshold && index >= 0 && index < order.length - 1) return order[index + 1];
   return current;
 }
