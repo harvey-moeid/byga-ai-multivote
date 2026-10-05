@@ -38,7 +38,8 @@ async function webhook(env) {
   return row?.value?openWebhook(row.value,env.SESSION_SECRET):null;
 }
 export function discordPayload(result) {
-  return {allowed_mentions:{parse:[]},embeds:[{title:'BYGA Trading Office · '+result.initial_direction,color:result.initial_direction==='BUY'?3066993:15158332,description:'BTCUSDT.P · '+result.timeframe+'\n'+result.voting.support+'/6 analis mendukung arah perhitungan.',fields:[{name:'Snapshot tanpa AI',value:Object.entries(result.snapshot.groups).map(([k,g])=>k+': '+g.signal).join('\n')},{name:'Vote analis',value:result.results.map(r=>r.analyst_name+': '+(r.status==='success'?r.signal:'ERROR')).join('\n')},{name:'Harga snapshot',value:String(result.last_price)},{name:'ID',value:result.id}],footer:{text:'Candle tertutup · chart_db · Sinyal analisis, tanpa eksekusi order'},timestamp:result.created_at}]};
+  const direction=result.deterministic_direction||result.initial_direction;
+  return {allowed_mentions:{parse:[]},embeds:[{title:'BYGA Trading Office · '+direction,color:direction==='BUY'?3066993:15158332,description:'BTCUSDT.P · '+result.timeframe+'\nAI berbobot mengonfirmasi arah deterministik · weighted share '+result.voting.weighted_share_pct+'% · raw '+result.voting.buy+' BUY / '+result.voting.sell+' SELL.',fields:[{name:'Market regime',value:String(result.snapshot.regime?.label||'UNKNOWN')},{name:'Snapshot tanpa AI',value:Object.entries(result.snapshot.groups).map(([k,g])=>k+': '+g.signal).join('\n')},{name:'Vote analis',value:result.results.map(r=>r.analyst_name+': '+(r.status==='success'?r.signal+(r.confidence!=null?' ('+r.confidence+'%)':''):'ERROR')).join('\n')},{name:'Harga snapshot',value:String(result.last_price)},{name:'ID',value:result.id}],footer:{text:'Candle tertutup · chart_db · Weighted confirmation · tanpa eksekusi order'},timestamp:result.created_at}]};
 }
 export async function enqueueDiscord(env,result) {
   if(!result.voting.approved)return null;
