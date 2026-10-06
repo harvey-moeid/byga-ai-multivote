@@ -26,7 +26,8 @@ export function analystPrompt(snapshot,analyst) {
   const priorities={
     smc_ict:['higher-timeframe structure','confirmed BOS/CHOCH','liquidity sweep','displacement','active FVG/order block','trigger alignment'],
     indicators:['trend EMA','ADX/DI strength','MACD momentum','RSI regime','Bollinger context','multi-timeframe alignment'],
-    volume:['relative volume','CMF direction','OBV change','candle direction','multi-timeframe alignment']
+    volume:['relative volume','CMF direction','OBV change','candle direction','multi-timeframe alignment'],
+    derivatives:['open-interest expansion versus price','funding-rate crowding','long/short positioning','liquidation imbalance','multi-timeframe alignment']
   };
   const lens=String(analyst.id).endsWith('_2')?'ADVERSARIAL: cari kontradiksi, invalidasi, dan alasan mengapa sinyal kelompok bisa gagal sebelum memilih sisi terkuat.':'BASE_CASE: nilai confluence utama secara disiplin dan pilih sisi dengan dukungan bukti terkuat.';
   return {
@@ -47,7 +48,7 @@ export function analystPrompt(snapshot,analyst) {
 
 export async function callAnalyst(env,snapshot,analyst) {
   const p=PROVIDERS.find(p=>p.meta.provider===analyst.provider),started=Date.now();
-  const row={id:crypto.randomUUID(),analysis_id:null,analyst_id:analyst.id,analyst_name:analyst.name,provider:analyst.provider,provider_label:p?.meta.providerLabel||analyst.provider,model:analyst.model,role:analyst.group,vote_index:Number(analyst.id.at(-1)),vote_group:analyst.id,data_source:'chart_db',confidence:null,duration_ms:0,error:null,error_code:null,adapter_version:'3.0.0',created_at:new Date().toISOString()};
+  const row={id:crypto.randomUUID(),analysis_id:null,analyst_id:analyst.id,analyst_name:analyst.name,provider:analyst.provider,provider_label:p?.meta.providerLabel||analyst.provider,model:analyst.model,role:analyst.group,vote_index:Number(analyst.id.at(-1)),vote_group:analyst.id,data_source:'chart_db',confidence:null,duration_ms:0,error:null,error_code:null,adapter_version:'3.1.0',created_at:new Date().toISOString()};
   try {
     if(!p||!providerAvailable(p,env))throw Object.assign(new Error('Provider karakter ini belum dikonfigurasi.'),{code:'PROVIDER_NOT_CONFIGURED'});
     const raw=await p.run({env:{...env,[p.meta.modelEnv]:analyst.model},prompt:analystPrompt(snapshot,analyst),timeoutMs:Math.max(1000,Math.min(60000,Number(env.AI_TIMEOUT_MS)||60000)),maxRetries:0});
@@ -102,7 +103,7 @@ export async function runPipeline(env,{trigger='manual',expectedCandleTimes}={})
     const extra=[env.DB.prepare("UPDATE pipeline_runs SET state='completed',lease_until=0,result=?,updated_at=? WHERE candle_key=? AND id=?").bind(JSON.stringify(result),new Date().toISOString(),candleKey,id)];
     const discordEligible=voting.approved&&snapshot.gate.meeting;
     if(discordEligible&&settings.discordEnabled)extra.push(await enqueueDiscord(env,result));
-    await saveAnalysis(env.DB,{id,created_at:iso,exchange:'chart_db',symbol:'BTCUSDT.P',market_type:'perpetual',timeframe:result.timeframe,market_snapshot:JSON.stringify({snapshot,settings,market:{sources:market.sources,fetched_at:market.fetched_at,data_source:'chart_db'}}),prompt_version:'3.0.0',market_schema_version:'3.0.0',majority_signal:voting.majority_signal||'NO_TRADE',decision_reason:voting.decision_reason,buy_votes:voting.buy,sell_votes:voting.sell,no_trade_votes:0,success_count:voting.success,error_count:voting.error,total_models:voting.total_models,duration_ms:result.duration_ms,last_price:result.last_price,price_change_pct_24h:null},results,extra);
+    await saveAnalysis(env.DB,{id,created_at:iso,exchange:'chart_db',symbol:'BTCUSDT.P',market_type:'perpetual',timeframe:result.timeframe,market_snapshot:JSON.stringify({snapshot,settings,market:{sources:market.sources,fetched_at:market.fetched_at,data_source:'chart_db'}}),prompt_version:'3.1.0',market_schema_version:'3.1.0',majority_signal:voting.majority_signal||'NO_TRADE',decision_reason:voting.decision_reason,buy_votes:voting.buy,sell_votes:voting.sell,no_trade_votes:0,success_count:voting.success,error_count:voting.error,total_models:voting.total_models,duration_ms:result.duration_ms,last_price:result.last_price,price_change_pct_24h:null},results,extra);
     result.delivery=await flushDiscord(env,settings.discordEnabled);
     if(!discordEligible)result.delivery={...result.delivery,eligible:false,reason:manualWithoutGate?'MANUAL_WITHOUT_DETERMINISTIC_GATE':voting.approved?'ELIGIBLE':'DECISION_NOT_APPROVED'};
     await refreshDelivery(env,result);
