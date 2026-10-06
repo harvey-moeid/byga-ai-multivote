@@ -83,11 +83,11 @@ describe('real SQL read-only source and run guards',()=>{
   it('runs eight characters on the same provider and isolates each model/snapshot',async()=>{
     const {env,db}=use();const ai=vi.spyOn(env.AI,'run');
     const r=await runPipeline(env);expect(r.results).toHaveLength(8);expect(r.voting.approved).toBe(true);expect(ai).toHaveBeenCalledTimes(8);
-    expect(new Set(r.results.map(r=>r.analyst_id)).size).toBe(6);
+    expect(new Set(r.results.map(r=>r.analyst_id)).size).toBe(8);
     const a={...defaultSettings(env).analysts[0],model:'@cf/test/custom-model'};
     await callAnalyst(env,r.snapshot,a);expect(ai.mock.calls.at(-1)[0]).toBe('@cf/test/custom-model');
     const prompt=JSON.parse(analystPrompt(r.snapshot,a).user);expect(prompt.group_snapshot.group).toBe('smc_ict');expect(prompt.groups).toBeUndefined();expect(prompt.initial_direction).toBeUndefined();expect(prompt.market_regime.label).toBeTruthy();
-    expect(db.prepare('SELECT COUNT(*) AS n FROM analysis_results').get().n).toBe(6);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM analysis_results').get().n).toBe(8);
   });
   it('deduplicates cron per candle while allowing repeated manual analyses',async()=>{
     const {env,db}=use();const ai=vi.spyOn(env.AI,'run');
