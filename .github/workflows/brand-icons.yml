@@ -1,0 +1,28 @@
+name: Generate brand icons
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Pillow
+        run: python -m pip install --disable-pip-version-check pillow==11.3.0
+      - name: Generate branding assets
+        run: python scripts/generate-brand-icons.py
+      - name: Commit generated assets
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dashboard/favicon-16.png dashboard/favicon-32.png dashboard/favicon-64.png dashboard/apple-touch-icon.png dashboard/icons/pwa-192.png dashboard/icons/pwa-512.png dashboard/icons/maskable-192.png dashboard/icons/maskable-512.png
+          if git diff --cached --quiet; then
+            echo "Brand assets are already up to date."
+            exit 0
+          fi
+          git commit -m "chore: regenerate BYGA brand icons"
+          git push origin HEAD:main

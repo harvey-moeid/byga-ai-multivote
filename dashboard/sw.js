@@ -1,4 +1,4 @@
-const VERSION = 'byga-pwa-v4';
+const VERSION = 'byga-pwa-v5';
 const CACHE_PREFIX = 'byga-pwa-';
 const STATIC_CACHE = VERSION + '-static';
 const RUNTIME_CACHE = VERSION + '-runtime';
@@ -16,9 +16,14 @@ const CORE = [
   '/pwa.js',
   '/manifest.webmanifest',
   '/byga-logo.png',
-  '/favicon.png',
+  '/favicon-16.png',
+  '/favicon-32.png',
+  '/favicon-64.png',
+  '/apple-touch-icon.png',
   '/icons/pwa-192.png',
-  '/icons/pwa-512.png'
+  '/icons/pwa-512.png',
+  '/icons/maskable-192.png',
+  '/icons/maskable-512.png'
 ];
 
 self.addEventListener('install', event => {
