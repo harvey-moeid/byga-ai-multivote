@@ -173,6 +173,29 @@ try {
   await mobile.click('#panel-close');
   const canvasBox=await mobile.locator('#office-canvas canvas').boundingBox();
   assert(canvasBox.width>300 && canvasBox.height>400);
+  assert.equal(await mobile.locator('#fullscreen-toggle').count(),1);
+  await mobile.evaluate(()=>{
+    const stage=document.querySelector('#office-stage');
+    Object.defineProperty(stage,'requestFullscreen',{value:undefined,configurable:true});
+    Object.defineProperty(stage,'webkitRequestFullscreen',{value:undefined,configurable:true});
+  });
+  await mobile.click('#fullscreen-toggle');
+  await mobile.waitForFunction(()=>document.body.classList.contains('view-fullscreen-fallback'));
+  const adminFullscreen=await mobile.evaluate(()=>{
+    const stage=document.querySelector('#office-stage').getBoundingClientRect();
+    const dock=document.querySelector('.office-dock');
+    const button=document.querySelector('#fullscreen-toggle');
+    return {top:stage.top,left:stage.left,width:stage.width,height:stage.height,viewportWidth:innerWidth,viewportHeight:innerHeight,dockDisplay:getComputedStyle(dock).display,pressed:button.getAttribute('aria-pressed'),overflow:document.documentElement.scrollWidth>innerWidth};
+  });
+  assert(Math.abs(adminFullscreen.top)<1&&Math.abs(adminFullscreen.left)<1,'Admin fullscreen fallback must start at viewport origin');
+  assert(Math.abs(adminFullscreen.width-adminFullscreen.viewportWidth)<2,'Admin fullscreen fallback must cover viewport width');
+  assert(Math.abs(adminFullscreen.height-adminFullscreen.viewportHeight)<2,'Admin fullscreen fallback must cover viewport height');
+  assert.equal(adminFullscreen.dockDisplay,'none');
+  assert.equal(adminFullscreen.pressed,'true');
+  assert.equal(adminFullscreen.overflow,false);
+  await mobile.click('#fullscreen-toggle');
+  await mobile.waitForFunction(()=>!document.body.classList.contains('view-fullscreen-fallback'));
+  assert.equal(await mobile.locator('#fullscreen-toggle').getAttribute('aria-pressed'),'false');
   await capture(mobile,'mobile.png');
   const before=await mobile.evaluate(()=>window.bygaOffice.state.actors.map(a=>[a.x,a.z]));
   await mobile.click('#analyze-btn');
