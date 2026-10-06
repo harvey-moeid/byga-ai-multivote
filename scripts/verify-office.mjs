@@ -86,15 +86,22 @@ try {
     return {
       manifestHref:document.querySelector('link[rel="manifest"]')?.getAttribute('href'),
       display:manifest.display,
-      iconSizes:manifest.icons.map(icon => icon.sizes).sort(),
+      icons:manifest.icons.map(icon => ({src:icon.src,sizes:icon.sizes,purpose:icon.purpose})),
       cachesBundles:serviceWorker.includes('/office.bundle.js') && serviceWorker.includes('/app.bundle.js'),
+      cachesBranding:serviceWorker.includes('/favicon-32.png') && serviceWorker.includes('/apple-touch-icon.png') && serviceWorker.includes('/icons/maskable-512.png'),
       skipsApi:serviceWorker.includes("url.pathname.startsWith('/api/')")
     };
   });
   assert.equal(pwa.manifestHref,'/manifest.webmanifest');
   assert.equal(pwa.display,'standalone');
-  assert.deepEqual(pwa.iconSizes,['192x192','512x512']);
+  assert.deepEqual(pwa.icons,[
+    {src:'/icons/pwa-192.png',sizes:'192x192',purpose:'any'},
+    {src:'/icons/pwa-512.png',sizes:'512x512',purpose:'any'},
+    {src:'/icons/maskable-192.png',sizes:'192x192',purpose:'maskable'},
+    {src:'/icons/maskable-512.png',sizes:'512x512',purpose:'maskable'}
+  ]);
   assert.equal(pwa.cachesBundles,true);
+  assert.equal(pwa.cachesBranding,true);
   assert.equal(pwa.skipsApi,true);
   assert.equal(await desktop.locator('#quality option[value="ultra"]').count(),1);
   await desktop.selectOption('#quality','ultra');
