@@ -1,6 +1,6 @@
 // Pure deterministic functions shared by the browser and Pages/cron runtime.
 // No network, AI, clock, or database access belongs in this module.
-export const ENGINE_VERSION='3.0.0';
+export const ENGINE_VERSION='3.1.0';
 const avg=a=>a.reduce((s,v)=>s+v,0)/a.length;
 const direction=v=>v>0?'BUY':v<0?'SELL':'NEUTRAL';
 export function ema(values,period) {
@@ -72,6 +72,34 @@ export function volumeFrame(c,s) {
   const flow=cmf>=s.cmfMin&&slope>0?'BUY':cmf<=-s.cmfMin&&slope<0?'SELL':'NEUTRAL';
   const signal=rvol>=s.rvolMin&&flow===candleDirection?flow:'NEUTRAL';
   return {signal,measurements:{source,unit:source==='okx_swap'?'contracts':'BTC',relativeVolume:rvol,baselineVolume:baseline,volume:last.volume,cmf,obv,obvChange:slope,candleDirection,flow},note:'CMF dan OBV adalah proksi OHLCV; bukan order-flow atau buy/sell delta asli.'};
+}
+export function derivativesFrame(c,data={},s={}) {
+  const oi=data.open_interest||[],funding=data.funding||[],longShort=data.long_short_ratio||[],liquidation=data.liquidation||[];
+  const oiLookback=Math.min(Number(s.oiLookback)||1,oi.length-1,c.length-1);
+  let openInterestChangePct=null,priceChangePct=null,openInterestSignal='NEUTRAL';
+  if(oiLookback>=1) {
+    const oiNow=oi.at(-1)?.value,oiThen=oi.at(-oiLookback-1)?.value,priceNow=c.at(-1)?.close,priceThen=c.at(-oiLookback-1)?.close;
+    if(Number.isFinite(oiNow)&&Number.isFinite(oiThen)&&oiThen>0)openInterestChangePct=(oiNow-oiThen)/oiThen*100;
+    if(Number.isFinite(priceNow)&&Number.isFinite(priceThen)&&priceThen>0)priceChangePct=(priceNow-priceThen)/priceThen*100;
+    if(openInterestChangePct!=null&&priceChangePct!=null&&openInterestChangePct>=s.oiChangeMinPct&&Math.abs(priceChangePct)>=s.priceMoveMinPct)openInterestSignal=direction(priceChangePct);
+  }
+  const fundingRaw=funding.at(-1)?.value,fundingRatePct=Number.isFinite(fundingRaw)?fundingRaw*100:null;
+  const fundingSignal=fundingRatePct==null?'NEUTRAL':fundingRatePct>=s.fundingExtremePct?'SELL':fundingRatePct<=-s.fundingExtremePct?'BUY':'NEUTRAL';
+  const ls=longShort.at(-1)||{},longShortRatio=Number.isFinite(ls.value)?ls.value:null;
+  const longShortSignal=longShortRatio==null?'NEUTRAL':longShortRatio>=s.longShortExtreme?'SELL':longShortRatio<=1/s.longShortExtreme?'BUY':'NEUTRAL';
+  const liq=liquidation.at(-1)||{},liquidationUsd=Number.isFinite(liq.value)?liq.value:null,longLiquidationUsd=Number.isFinite(liq.value2)?liq.value2:null,shortLiquidationUsd=Number.isFinite(liq.value3)?liq.value3:null;
+  let liquidationSignal='NEUTRAL';
+  if(liquidationUsd!=null&&liquidationUsd>=s.liquidationMinUsd&&longLiquidationUsd!=null&&shortLiquidationUsd!=null) {
+    if(shortLiquidationUsd>=longLiquidationUsd*s.liquidationImbalance)liquidationSignal='BUY';
+    else if(longLiquidationUsd>=shortLiquidationUsd*s.liquidationImbalance)liquidationSignal='SELL';
+  }
+  const votes={openInterest:openInterestSignal,funding:fundingSignal,longShort:longShortSignal,liquidation:liquidationSignal};
+  return {...tally(Object.values(votes),s.threshold),votes,measurements:{
+    openInterestUsd:oi.at(-1)?.value??null,openInterestChangePct,priceChangePct,fundingRatePct,
+    longShortRatio,longRatio:ls.value2??null,shortRatio:ls.value3??null,
+    liquidationUsd,longLiquidationUsd,shortLiquidationUsd,
+    sources:{openInterest:oi.at(-1)?.source||null,funding:funding.at(-1)?.source||null,longShort:ls.source||null,liquidation:liq.source||null}
+  },note:'Derivatif memakai ekspansi open interest yang mengonfirmasi arah harga, funding ekstrem dan long/short ratio secara kontrarian, serta imbalance liquidation. Data dibaca read-only dari chart_db.'};
 }
 export function smcFrame(c,s) {
   const atrSeries=wilder(ranges(c),s.atrPeriod),atr=atrSeries.at(-1)??0;
@@ -150,12 +178,16 @@ export function calculateSnapshot(market,settings) {
     const frames=Object.fromEntries(Object.values(roles).map(tf=>[tf,fn(market.series[tf],parameters)]));
     groups[group]={group,signal:combineFrames(frames,roles),roles,parameters,frames};
   }
+  const derivativeData=market.derivatives||{funding:[],frames:{}};
+  const derivativeFrames=Object.fromEntries(Object.values(roles).map(tf=>[tf,derivativesFrame(market.series[tf],{...(derivativeData.frames?.[tf]||{}),funding:derivativeData.funding||[]},c.derivatives)]));
+  groups.derivatives={group:'derivatives',signal:combineFrames(derivativeFrames,roles),roles,parameters:c.derivatives,frames:derivativeFrames};
   const candles=market.series[roles.trigger];
   return {engine_version:ENGINE_VERSION,symbol:'BTCUSDT.P',data_source:'chart_db',last_price:candles.at(-1).close,candle_times:Object.fromEntries(Object.entries(market.series).map(([tf,cs])=>[tf,cs.at(-1).timestamp])),regime:classifyMarketRegime(market,settings),groups,gate:groupConsensus(groups)};
 }
 const voteClamp=(n,min,max)=>Math.max(min,Math.min(max,n));
-export function meetingDecision(results,deterministicDirection,{weights={},mode='auto',minSuccess=4,minDirectionalVotes=3,minWeightedShare=.60}={}) {
+export function meetingDecision(results,deterministicDirection,{weights={},mode='auto',minSuccess=null,minDirectionalVotes=null,minWeightedShare=.60}={}) {
   const valid=results.filter(r=>r.status==='success'&&['BUY','SELL'].includes(r.signal));
+  const expected=Math.max(1,results.length),requiredSuccess=minSuccess??Math.ceil(expected*2/3),requiredDirectional=minDirectionalVotes??Math.ceil(expected/2);
   const buy=valid.filter(r=>r.signal==='BUY').length,sell=valid.filter(r=>r.signal==='SELL').length;
   const scores={BUY:0,SELL:0};
   const weighted_results=valid.map(r=>{
@@ -167,7 +199,7 @@ export function meetingDecision(results,deterministicDirection,{weights={},mode=
   });
   const total=scores.BUY+scores.SELL,winner=scores.BUY===scores.SELL?null:(scores.BUY>scores.SELL?'BUY':'SELL');
   const winnerScore=winner?scores[winner]:0,weightedShare=total?winnerScore/total:0,winnerVotes=winner==='BUY'?buy:winner==='SELL'?sell:0;
-  const decisive=valid.length>=minSuccess&&winnerVotes>=minDirectionalVotes&&weightedShare>=minWeightedShare;
+  const decisive=valid.length>=requiredSuccess&&winnerVotes>=requiredDirectional&&weightedShare>=minWeightedShare;
   const hasDeterministic=['BUY','SELL'].includes(deterministicDirection);
   const support=hasDeterministic?valid.filter(r=>r.signal===deterministicDirection).length:winnerVotes;
   let approved=false,majority_signal=null,decision_reason='INSUFFICIENT_WEIGHTED_SUPPORT';
@@ -178,5 +210,5 @@ export function meetingDecision(results,deterministicDirection,{weights={},mode=
     majority_signal=decisive?winner:null;
     decision_reason=decisive?'MANUAL_WEIGHTED_MAJORITY':'MANUAL_AI_INCONCLUSIVE';
   }
-  return {buy,sell,no_trade:0,success:valid.length,error:results.length-valid.length,total_models:results.length,support,required:minDirectionalVotes,approved,majority_signal,decision_reason,weighted_buy:Number(scores.BUY.toFixed(3)),weighted_sell:Number(scores.SELL.toFixed(3)),weighted_share_pct:Number((weightedShare*100).toFixed(2)),minimum_weighted_share_pct:Number((minWeightedShare*100).toFixed(2)),minimum_success:minSuccess,weighted_results};
+  return {buy,sell,no_trade:0,success:valid.length,error:results.length-valid.length,total_models:results.length,support,required:requiredDirectional,approved,majority_signal,decision_reason,weighted_buy:Number(scores.BUY.toFixed(3)),weighted_sell:Number(scores.SELL.toFixed(3)),weighted_share_pct:Number((weightedShare*100).toFixed(2)),minimum_weighted_share_pct:Number((minWeightedShare*100).toFixed(2)),minimum_success:requiredSuccess,weighted_results};
 }
