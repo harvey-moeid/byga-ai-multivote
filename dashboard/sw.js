@@ -1,4 +1,4 @@
-const VERSION = 'byga-pwa-v5';
+const VERSION = 'byga-pwa-v6';
 const CACHE_PREFIX = 'byga-pwa-';
 const STATIC_CACHE = VERSION + '-static';
 const RUNTIME_CACHE = VERSION + '-runtime';
