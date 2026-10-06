@@ -22,8 +22,8 @@ const snapshot=calculateSnapshot(market(),settings);
 const result = {
   id:'TEST-OFFICE', created_at:'2026-10-04T15:00:00Z', majority_signal:'BUY', decision_reason:'MAJORITY',last_price:67890,duration_ms:1800,
   status:'approved',meeting:true,gate_passed:true,initial_direction:'BUY',deterministic_direction:'BUY',snapshot,delivery:{state:'not_configured'},
-  voting:{buy:4,sell:2,no_trade:0,total_models:6,success:6,support:4,approved:true,weighted_share_pct:66.67},
-  results:settings.analysts.map((a,i)=>({analyst_id:a.id,analyst_name:a.name,provider:a.provider,provider_label:'Workers AI',model:a.model,role:a.group,status:'success',signal:i<4?'BUY':'SELL',reason:'Respons uji integrasi — bukan analisis pasar live.',vote_index:i%2+1,duration_ms:500}))
+  voting:{buy:5,sell:3,no_trade:0,total_models:8,success:8,support:5,required:4,approved:true,weighted_share_pct:62.5},
+  results:settings.analysts.map((a,i)=>({analyst_id:a.id,analyst_name:a.name,provider:a.provider,provider_label:'Workers AI',model:a.model,role:a.group,status:'success',signal:i<5?'BUY':'SELL',reason:'Respons uji integrasi — bukan analisis pasar live.',vote_index:i%2+1,duration_ms:500}))
 };
 let calls = [], mode = 'success';
 const errors = [];
@@ -43,7 +43,7 @@ async function setup(viewport) {
     if(path==='/api/analyze'){
       calls.push(request.postDataJSON());
       if(mode==='error')return route.fulfill({status:503,json:{error_code:'CHART_DATA_ERROR',error:'Data chart_db terlalu lama.'}});
-      if(mode==='neutral')return route.fulfill({json:{...result,id:'TEST-NEUTRAL',status:'manual_review',meeting:true,gate_passed:false,initial_direction:'NEUTRAL',deterministic_direction:'NEUTRAL',majority_signal:'BUY',delivery:{state:'idle',eligible:false,reason:'MANUAL_WITHOUT_DETERMINISTIC_GATE'},voting:{buy:4,sell:2,error:0,success:6,total_models:6,approved:false,weighted_share_pct:66.67},snapshot:calculateSnapshot(market('flat'),settings)}});
+      if(mode==='neutral')return route.fulfill({json:{...result,id:'TEST-NEUTRAL',status:'manual_review',meeting:true,gate_passed:false,initial_direction:'NEUTRAL',deterministic_direction:'NEUTRAL',majority_signal:'BUY',delivery:{state:'idle',eligible:false,reason:'MANUAL_WITHOUT_DETERMINISTIC_GATE'},voting:{buy:5,sell:3,error:0,success:8,total_models:8,required:4,approved:false,weighted_share_pct:62.5},snapshot:calculateSnapshot(market('flat'),settings)}});
       return route.fulfill({json:result});
     }
     return route.fulfill({json:{}});
@@ -126,10 +126,10 @@ try {
   assert(colors>20,'3D scene must have nonblank canvas pixels');
   console.log('Desktop canvas colors:',colors,'State:',await desktop.evaluate(()=>({calls:window.bygaOffice.state.drawCalls,triangles:window.bygaOffice.state.triangles})));
   await desktop.click('[data-panel="providers"]');
-  assert.equal(await desktop.locator('.office-providers .provider-option').count(),6);
+  assert.equal(await desktop.locator('.office-providers .provider-option').count(),8);
   await desktop.click('#edit-analysts');
   await desktop.locator('[aria-label="Provider analis 1"]').waitFor();
-  assert.equal(await desktop.locator('[aria-label^="Provider analis"]').count(),6);
+  assert.equal(await desktop.locator('[aria-label^="Provider analis"]').count(),8);
   assert.equal(await desktop.locator('.provider-health-card').count(),1);
   assert.match(await desktop.locator('.provider-health-badge').textContent(),/Healthy/);
   await desktop.fill('[aria-label="Model analis 1"]','@cf/test/custom-model');
@@ -182,8 +182,7 @@ try {
   assert.equal(await mobile.locator('#analyze-btn').isDisabled(),true);
   await phase(mobile,'discussing');
   const gathered=await mobile.evaluate(()=>window.bygaOffice.state);
-  assert(gathered.actors.filter(a=>a.id<6||a.id===8).every(a=>a.arrived&&a.sitting>.95),'Six analysts and boss must sit before discussion');
-  assert.deepEqual(gathered.actors.filter(a=>a.id===6||a.id===7).map(a=>[a.x,a.z]),before.slice(6,8),'Two support staff stay at their desks');
+  assert(gathered.actors.every(a=>a.arrived&&a.sitting>.95),'Eight analysts and boss must sit before discussion');
   assert.equal(await mobile.locator('#consensus').textContent(),'BUY');
   await mobile.waitForTimeout(1600);
   await capture(mobile,'meeting.png');
@@ -208,7 +207,7 @@ try {
   assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await mobile.close();
   assert.deepEqual(errors,[]);
-  console.log('PASS: desktop/mobile, per-character shared provider settings, deterministic browser calculation, six-analyst meeting, error handling, return, quality persistence.');
+  console.log('PASS: desktop/mobile, per-character shared provider settings, deterministic browser calculation, eight-analyst meeting, error handling, return, quality persistence.');
 } finally {
   await browser.close(); server.close();
 }
