@@ -210,6 +210,40 @@ try {
   assert.equal(await mobile.locator('#quality').inputValue(),'medium');
   assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await mobile.close();
+
+  const publicView=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1});
+  publicView.setDefaultTimeout(60000);
+  publicView.on('pageerror',e=>{errors.push(e.message);console.log('Public browser error:',e.message);});
+  await publicView.route('**/api/public-status',route=>route.fulfill({json:{symbol:'BTCUSDT.P',timeframe:'H1 / M15 / M5',signal:null,updated_at:null}}));
+  await publicView.goto('http://localhost:'+(process.env.PORT||4173)+'/index.html');
+  await publicView.waitForFunction(()=>!!window.bygaOffice,{timeout:30000});
+  assert.equal(await publicView.locator('#fullscreen-toggle').count(),1);
+  assert.equal(await publicView.locator('#fullscreen-toggle').getAttribute('aria-pressed'),'false');
+  const normalStage=await publicView.locator('#office-stage').boundingBox();
+  assert(normalStage.y>=65&&normalStage.y<=67,'Public 3D view must start below the mobile header before fullscreen');
+  await publicView.evaluate(()=>{
+    const stage=document.querySelector('#office-stage');
+    Object.defineProperty(stage,'requestFullscreen',{value:undefined,configurable:true});
+    Object.defineProperty(stage,'webkitRequestFullscreen',{value:undefined,configurable:true});
+  });
+  await publicView.click('#fullscreen-toggle');
+  await publicView.waitForFunction(()=>document.body.classList.contains('view-fullscreen-fallback'));
+  const fullscreenLayout=await publicView.evaluate(()=>{
+    const stage=document.querySelector('#office-stage').getBoundingClientRect();
+    const button=document.querySelector('#fullscreen-toggle');
+    return {top:stage.top,left:stage.left,width:stage.width,height:stage.height,viewportWidth:innerWidth,viewportHeight:innerHeight,pressed:button.getAttribute('aria-pressed'),label:button.getAttribute('aria-label'),overflow:document.documentElement.scrollWidth>innerWidth};
+  });
+  assert(Math.abs(fullscreenLayout.top)<1&&Math.abs(fullscreenLayout.left)<1,'Fullscreen fallback must start at the viewport origin');
+  assert(Math.abs(fullscreenLayout.width-fullscreenLayout.viewportWidth)<2,'Fullscreen fallback must cover viewport width');
+  assert(Math.abs(fullscreenLayout.height-fullscreenLayout.viewportHeight)<2,'Fullscreen fallback must cover viewport height');
+  assert.equal(fullscreenLayout.pressed,'true');
+  assert.match(fullscreenLayout.label,/Keluar layar penuh/);
+  assert.equal(fullscreenLayout.overflow,false);
+  await publicView.click('#fullscreen-toggle');
+  await publicView.waitForFunction(()=>!document.body.classList.contains('view-fullscreen-fallback'));
+  assert.equal(await publicView.locator('#fullscreen-toggle').getAttribute('aria-pressed'),'false');
+  await publicView.close();
+
   assert.deepEqual(errors,[]);
   console.log('PASS: desktop/mobile, per-character shared provider settings, deterministic browser calculation, eight-analyst meeting, error handling, return, quality persistence.');
 } finally {
