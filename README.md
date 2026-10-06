@@ -18,7 +18,7 @@ delapan karakter analis AI, cron lima menit, dan notifikasi Discord bersyarat.
 4. Engine mengklasifikasikan **market regime** secara deterministik dari timeframe
    tren: TREND_UP, TREND_DOWN, EXPANSION_UP, EXPANSION_DOWN, COMPRESSION, RANGE,
    atau UNKNOWN. Regime memakai EMA/DI, ADX, ATR relatif, dan return 20 candle.
-5. **AUTO / cron:** enam AI hanya dipanggil jika minimal **2 dari 4 kelompok**
+5. **AUTO / cron:** delapan AI hanya dipanggil jika minimal **2 dari 4 kelompok**
    deterministik sepakat BUY atau SELL. Jika gate gagal, run disimpan sebagai
    `filtered` tanpa biaya AI.
 6. **MANUAL:** tombol **Mulai Analisis** selalu memanggil kedelapan AI setelah snapshot
@@ -95,7 +95,7 @@ di chart_db; metadata sumber dicatat.
 
 Setiap slot memiliki nama, provider, dan model sendiri. Provider yang sama boleh
 dipakai di semua slot, termasuk dengan model berbeda. Model override diisolasi
-per panggilan; tidak ada persyaratan enam provider unik.
+per panggilan; tidak ada persyaratan delapan provider unik.
 
 Provider: Gemini, Groq, OpenRouter, Mistral, Hugging Face, Cohere, NVIDIA,
 SambaNova, Vercel AI Gateway, dan **Cloudflare Workers AI**.
