@@ -46,8 +46,3 @@ SIGNAL_HISTORY_DAYS = "365"
 SIGNAL_OUTCOME_HORIZON_HOURS = "2"
 ANALYZE_COOLDOWN_SECONDS = "60"
 ANALYZE_ONCE_PER_CANDLE = "1"
-
-# Exactly two AI analysts. Each produces two independent votes.
-AI_A_PROVIDER = "google-gemini"
-AI_B_PROVIDER = "groq"
-AI_VOTES_PER_PROVIDER = "2"

@@ -1,18 +1,16 @@
-const VERSION = 'byga-pwa-v6';
+const VERSION = 'byga-pwa-v7';
 const CACHE_PREFIX = 'byga-pwa-';
 const STATIC_CACHE = VERSION + '-static';
 const RUNTIME_CACHE = VERSION + '-runtime';
 const CORE = [
   '/',
   '/index.html',
-  '/admin.html',
   '/login.html',
   '/office.css',
   '/styles.css',
   '/public.js',
   '/login.js',
   '/office.bundle.js',
-  '/app.bundle.js',
   '/pwa.js',
   '/manifest.webmanifest',
   '/byga-logo.png',
@@ -31,7 +29,7 @@ self.addEventListener('install', event => {
     const cache = await caches.open(STATIC_CACHE);
     await Promise.allSettled(CORE.map(async url => {
       const response = await fetch(url, { cache:'reload' });
-      if (response.ok) await cache.put(url, response);
+      if (response.ok && !response.redirected) await cache.put(url, response);
     }));
     await self.skipWaiting();
   })());
@@ -65,7 +63,7 @@ async function networkFirst(request) {
   const cache = await caches.open(RUNTIME_CACHE);
   try {
     const response = await fetch(request);
-    if (response.ok) await cache.put(request, response.clone());
+    if (response.ok && !response.redirected) await cache.put(request, response.clone());
     return response;
   } catch {
     return (await cache.match(request)) ||
@@ -79,7 +77,7 @@ async function staleWhileRevalidate(request) {
   const cache = await caches.open(RUNTIME_CACHE);
   const cached = await cache.match(request) || await caches.match(request);
   const network = fetch(request).then(async response => {
-    if (response.ok) await cache.put(request, response.clone());
+    if (response.ok && !response.redirected) await cache.put(request, response.clone());
     return response;
   }).catch(() => null);
   return cached || await network || new Response('', { status:504 });

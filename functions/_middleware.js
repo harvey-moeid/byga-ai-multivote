@@ -8,8 +8,13 @@ import { isAuthenticated } from "../src/lib/auth.js";
 const PUBLIC_PATHS = new Set([
   "/","/index.html","/office.css","/office.bundle.js","/public.js",
   "/login","/login.html","/login.js","/styles.css",
+  "/pwa.js","/sw.js","/manifest.webmanifest","/byga-logo.png",
+  "/favicon.ico","/favicon.png","/favicon-16.png","/favicon-32.png",
+  "/favicon-64.png","/apple-touch-icon.png",
+  "/icons/pwa-192.png","/icons/pwa-512.png",
+  "/icons/maskable-192.png","/icons/maskable-512.png",
   "/api/login","/api/ingest","/api/cron","/api/public-status",
-  "/favicon.ico","/robots.txt"
+  "/robots.txt"
 ]);
 
 export async function onRequest(context) {
