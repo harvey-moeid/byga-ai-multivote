@@ -4,7 +4,7 @@ const $=id=>document.getElementById(id);
 const fmt=n=>n!=null&&Number.isFinite(Number(n))?Number(n).toLocaleString('en-US',{maximumFractionDigits:2}):'—';
 const date=v=>v?new Date(v).toLocaleString('id-ID',{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Jakarta'}):'—';
 const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const labels={smc_ict:'SMC / ICT',indicators:'Indikator',volume:'Volume'};
+const labels={smc_ict:'SMC / ICT',indicators:'Indikator',volume:'Volume',derivatives:'Derivatif / Positioning'};
 let running=false,sceneReady=!!window.bygaOffice,settings=null,lastSeen=null,statusInitialized=false,pendingResult=null;
 function updateButton(){$('analyze-btn').disabled=running||!sceneReady||!settings;}
 function message(text,type=''){$('run-message').textContent=text;$('run-message').className='office-message '+type;}
@@ -20,14 +20,14 @@ function openPanel(name) {
 }
 function renderSnapshot(snapshot) {
   const gate=snapshot.gate;
-  $('gate-note').textContent=gate.meeting?'Gate otomatis: '+gate.direction+' · minimal 2 dari 3 kelompok sepakat.':'Gate otomatis belum lolos. Analisis manual tetap dapat menjalankan enam AI independen.';
+  $('gate-note').textContent=gate.meeting?'Gate otomatis: '+gate.direction+' · minimal 2 dari 4 kelompok sepakat.':'Gate otomatis belum lolos. Analisis manual tetap dapat menjalankan delapan AI independen.';
   $('snapshot-groups').innerHTML=Object.entries(snapshot.groups).map(([key,g])=>{
     const frames=Object.entries(g.frames).map(([tf,f])=>{
       const m=f.measurements;
-      const detail=key==='smc_ict'?'Struktur '+(m.bias||'NETRAL')+' · '+m.structure.length+' event · '+m.fvg.length+' FVG':key==='indicators'?'RSI '+fmt(m.rsi)+' · ADX '+fmt(m.adx)+' · EMA '+fmt(m.emaFast)+' / '+fmt(m.emaSlow):'RVOL '+fmt(m.relativeVolume)+' · CMF '+fmt(m.cmf)+' · '+(m.source||'—');
+      const detail=key==='smc_ict'?'Struktur '+(m.bias||'NETRAL')+' · '+m.structure.length+' event · '+m.fvg.length+' FVG':key==='indicators'?'RSI '+fmt(m.rsi)+' · ADX '+fmt(m.adx)+' · EMA '+fmt(m.emaFast)+' / '+fmt(m.emaSlow):key==='volume'?'RVOL '+fmt(m.relativeVolume)+' · CMF '+fmt(m.cmf)+' · '+(m.source||'—'):'ΔOI '+fmt(m.openInterestChangePct)+'% · Funding '+fmt(m.fundingRatePct)+'% · L/S '+fmt(m.longShortRatio)+' · Liq $'+fmt(m.liquidationUsd);
       return '<tr><td>'+escape(tf)+'</td><td>'+escape(f.signal==='NEUTRAL'?'NETRAL':f.signal)+'</td><td>'+escape(detail)+'</td></tr>';
     }).join('');
-    return '<details class="snapshot-card"><summary><b>'+labels[key]+'</b><span class="signal-pill '+g.signal.toLowerCase()+'">'+(g.signal==='NEUTRAL'?'NETRAL':g.signal)+'</span></summary><table><tbody>'+frames+'</tbody></table>'+(key==='volume'?'<small>OHLCV: CMF/OBV adalah proksi, bukan delta transaksi.</small>':'')+'</details>';
+    return '<details class="snapshot-card"><summary><b>'+labels[key]+'</b><span class="signal-pill '+g.signal.toLowerCase()+'">'+(g.signal==='NEUTRAL'?'NETRAL':g.signal)+'</span></summary><table><tbody>'+frames+'</tbody></table>'+(key==='volume'?'<small>OHLCV: CMF/OBV adalah proksi, bukan delta transaksi.</small>':key==='derivatives'?'<small>Derivatif dibaca read-only dari chart_db; funding dan positioning ekstrem diperlakukan sebagai sinyal crowding.</small>':'')+'</details>';
   }).join('');
   $('price').textContent=fmt(snapshot.last_price);$('price-change').textContent='H1 / M15 / M5 · candle tertutup';
 }
@@ -36,9 +36,9 @@ function renderAnalysis(d) {
   const v=d.voting||{buy:d.buy_votes,sell:d.sell_votes,success:d.success_count,total_models:d.total_models,error:d.error_count},signal=d.majority_signal||'—';
   $('consensus').textContent=signal;$('consensus').className='metric-value signal-'+signal.toLowerCase();
   $('consensus-note').textContent=d.status==='approved'?'Disetujui: AI berbobot mengonfirmasi arah deterministik '+d.deterministic_direction+' · share '+fmt(v.weighted_share_pct)+'%.':d.status==='manual_review'?'Manual tanpa gate: AI berbobot memilih '+(d.majority_signal||'—')+' · share '+fmt(v.weighted_share_pct)+'%. Tidak diperlakukan sebagai sinyal otomatis.':d.status==='manual_inconclusive'?'Manual selesai, tetapi AI belum mencapai ambang weighted 60%.':d.status==='filtered'?'Auto tersaring sebelum AI: dua kelompok belum sepakat.':d.status==='rejected'?'Meeting selesai: weighted vote tidak cukup atau berlawanan dengan arah deterministik.':!d.voting?'Histori alur sebelumnya.':'Menunggu hasil.';
-  $('responses').textContent=v.success||0;$('responses-total').textContent=' / '+(v.total_models??6)+' vote';
+  $('responses').textContent=v.success||0;$('responses-total').textContent=' / '+(v.total_models??8)+' vote';
   $('buy-count').textContent=v.buy||0;$('sell-count').textContent=v.sell||0;$('neutral-count').textContent=v.error||0;$('vote-total').textContent=v.total_models||0;
-  $('buy-bar').style.width=((v.buy||0)/(v.total_models||6)*100)+'%';$('sell-bar').style.width=((v.sell||0)/(v.total_models||6)*100)+'%';
+  $('buy-bar').style.width=((v.buy||0)/(v.total_models||8)*100)+'%';$('sell-bar').style.width=((v.sell||0)/(v.total_models||8)*100)+'%';
   $('duration').textContent=fmt((d.duration_ms||0)/1000);$('duration-unit').textContent=' sec';
   $('last-updated').textContent='WIB · '+date(d.created_at);$('result-status').textContent=({approved:'DISETUJUI',rejected:'BELUM DISETUJUI',filtered:'TERSARING',manual_review:'MANUAL REVIEW',manual_inconclusive:'MANUAL INKONKLUSIF'})[d.status]||'MEMPROSES';
   $('result-empty').classList.toggle('hidden',!!d.results?.length);
@@ -70,7 +70,7 @@ async function loadHistory() {
 }
 async function playMeeting(result) {
   running=true;updateButton();$('office-panel').close();$('analyze-label').textContent='Meeting berlangsung';
-  message(result.gate_passed?'Gate '+result.deterministic_direction+' lolos. Enam analis independen dan bos menuju ruang meeting.':'Mode manual: gate otomatis belum lolos, tetapi enam analis independen tetap menuju ruang meeting.');
+  message(result.gate_passed?'Gate '+result.deterministic_direction+' lolos. Delapan analis independen dan bos menuju ruang meeting.':'Mode manual: gate otomatis belum lolos, tetapi delapan analis independen tetap menuju ruang meeting.');
   await window.bygaOffice.beginMeeting();renderAnalysis(result);await window.bygaOffice.discuss(result);
   $('analyze-label').textContent='Kembali ke meja';
 }
@@ -79,7 +79,7 @@ async function runManual() {
   running=true;updateButton();$('analyze-label').textContent='Menghitung…';message('Membaca chart_db dan menghitung snapshot di web tanpa AI.');
   try {
     const snapshot=await previewCalculation();
-    message(snapshot.gate.meeting?'Gate '+snapshot.gate.direction+' terdeteksi. Meminta enam vote AI independen.':'Gate otomatis belum lolos. Mode manual tetap meminta enam vote AI independen.');
+    message(snapshot.gate.meeting?'Gate '+snapshot.gate.direction+' terdeteksi. Meminta delapan vote AI independen.':'Gate otomatis belum lolos. Mode manual tetap meminta delapan vote AI independen.');
     const result=await api('/api/analyze',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({candle_times:snapshot.candle_times}),signal:AbortSignal.timeout(150000)});
     if(result.snapshot){lastSeen=result.id;renderAnalysis(result);}void loadHistory();
     if(result.duplicate)message(result.status==='running'?'Candle ini sedang diproses cron. Hasil akan muncul otomatis.':'Candle ini sudah diperiksa. Tidak ada panggilan AI atau pengiriman Discord ulang.');
@@ -100,7 +100,7 @@ async function pollStatus() {
     if(running){pendingResult=r;return;}
     renderAnalysis(r);void loadHistory();
     if(r.meeting&&sceneReady)await playMeeting(r);
-    else message('Cron selesai: dua kelompok belum sepakat.');
+    else message('Cron selesai: belum ada minimal dua dari empat kelompok yang sepakat.');
   }catch{/* Next poll retries without disturbing the current meeting. */}
 }
 window.addEventListener('office:ready',()=>{sceneReady=true;updateButton();});
