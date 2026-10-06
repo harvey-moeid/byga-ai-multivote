@@ -6,6 +6,41 @@ const date=v=>v?new Date(v).toLocaleString('id-ID',{dateStyle:'medium',timeStyle
 const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const labels={smc_ict:'SMC / ICT',indicators:'Indikator',volume:'Volume',derivatives:'Derivatif / Positioning'};
 let running=false,sceneReady=!!window.bygaOffice,settings=null,lastSeen=null,statusInitialized=false,pendingResult=null;
+const stage=$('office-stage'),fullscreenButton=$('fullscreen-toggle');
+let fallbackFullscreen=false;
+const nativeFullscreenElement=()=>document.fullscreenElement||document.webkitFullscreenElement||null;
+function syncFullscreenUi(){
+  const active=Boolean(nativeFullscreenElement()||fallbackFullscreen);
+  document.body.classList.toggle('view-fullscreen-fallback',fallbackFullscreen);
+  if(!fullscreenButton)return;
+  fullscreenButton.setAttribute('aria-pressed',String(active));
+  fullscreenButton.setAttribute('aria-label',active?'Keluar layar penuh':'Masuk layar penuh');
+  fullscreenButton.title=active?'Keluar layar penuh':'Layar penuh';
+}
+function enterFallbackFullscreen(){fallbackFullscreen=true;syncFullscreenUi();}
+function exitFallbackFullscreen(){fallbackFullscreen=false;syncFullscreenUi();}
+async function toggleFullscreen(){
+  if(nativeFullscreenElement()){
+    try{
+      if(document.exitFullscreen)await document.exitFullscreen();
+      else if(document.webkitExitFullscreen)document.webkitExitFullscreen();
+    }catch{/* Preserve the current fullscreen state if the browser rejects exit. */}
+    return;
+  }
+  if(fallbackFullscreen){exitFallbackFullscreen();return;}
+  try{
+    if(stage?.requestFullscreen)await stage.requestFullscreen({navigationUI:'hide'});
+    else if(stage?.webkitRequestFullscreen)stage.webkitRequestFullscreen();
+    else enterFallbackFullscreen();
+  }catch{enterFallbackFullscreen();}
+}
+if(fullscreenButton){
+  fullscreenButton.addEventListener('click',()=>{void toggleFullscreen();});
+  document.addEventListener('fullscreenchange',syncFullscreenUi);
+  document.addEventListener('webkitfullscreenchange',syncFullscreenUi);
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&fallbackFullscreen)exitFallbackFullscreen();});
+  syncFullscreenUi();
+}
 function updateButton(){$('analyze-btn').disabled=running||!sceneReady||!settings;}
 function message(text,type=''){$('run-message').textContent=text;$('run-message').className='office-message '+type;}
 async function api(path,options) {
