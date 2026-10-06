@@ -3,7 +3,7 @@ const h=(tag,props={},...children)=>{
   for(const [k,v] of Object.entries(props)){if(k==='text')el.textContent=v;else if(k==='class')el.className=v;else if(k==='checked')el.checked=v;else if(k==='value')el.value=v;else el.setAttribute(k,v);}
   el.append(...children.flat());return el;
 };
-const descriptions={candleLimit:'Jumlah candle per timeframe',swing:'Radius pivot terkonfirmasi',range:'Rentang dealing range',eventWindow:'Jendela event terbaru',atrPeriod:'Periode ATR',displacement:'Displacement minimum × ATR',fvgAtr:'Ukuran FVG minimum × ATR',threshold:'Minimum konfirmasi searah',emaFast:'EMA cepat',emaSlow:'EMA lambat',rsiPeriod:'Periode RSI',rsiBuy:'RSI minimum BUY',rsiSell:'RSI maksimum SELL',macdFast:'MACD cepat',macdSlow:'MACD lambat',macdSignal:'MACD signal',bbPeriod:'Periode Bollinger',bbStd:'Deviasi Bollinger',adxPeriod:'Periode ADX',adxMin:'ADX minimum',period:'Periode CMF / baseline volume',rvolMin:'RVOL minimum',cmfMin:'CMF minimum absolut',obvLookback:'Jendela perubahan OBV'};
+const descriptions={candleLimit:'Jumlah candle per timeframe',swing:'Radius pivot terkonfirmasi',range:'Rentang dealing range',eventWindow:'Jendela event terbaru',atrPeriod:'Periode ATR',displacement:'Displacement minimum × ATR',fvgAtr:'Ukuran FVG minimum × ATR',threshold:'Minimum konfirmasi searah',emaFast:'EMA cepat',emaSlow:'EMA lambat',rsiPeriod:'Periode RSI',rsiBuy:'RSI minimum BUY',rsiSell:'RSI maksimum SELL',macdFast:'MACD cepat',macdSlow:'MACD lambat',macdSignal:'MACD signal',bbPeriod:'Periode Bollinger',bbStd:'Deviasi Bollinger',adxPeriod:'Periode ADX',adxMin:'ADX minimum',period:'Periode CMF / baseline volume',rvolMin:'RVOL minimum',cmfMin:'CMF minimum absolut',obvLookback:'Jendela perubahan OBV',oiLookback:'Lookback Open Interest',oiChangeMinPct:'Δ Open Interest minimum %',priceMoveMinPct:'Pergerakan harga minimum %',fundingExtremePct:'Funding ekstrem %',longShortExtreme:'Rasio Long/Short ekstrem',liquidationImbalance:'Imbalance liquidation minimum',liquidationMinUsd:'Liquidation minimum USD'};
 export async function openSettings(onSaved) {
   if(document.getElementById('pipeline-settings'))return;
   const body=h('div',{class:'pipeline-settings-body'},'Memuat pengaturan…'),close=h('button',{type:'button',class:'detail-close',text:'Tutup'});
@@ -18,7 +18,7 @@ export async function openSettings(onSaved) {
     const healthByProvider=new Map((data.provider_health||[]).map(x=>[x.provider,x]));
     const healthText=x=>({HEALTHY:'Healthy',DEGRADED:'Degraded',DOWN:'Down',READY:'Ready',NOT_CONFIGURED:'Not configured'})[x?.state]||'Unknown';
     const healthTime=value=>value?new Date(value).toLocaleString('id-ID',{dateStyle:'short',timeStyle:'short',timeZone:'Asia/Jakarta'}):'Belum pernah dipakai';
-    body.replaceChildren(h('p',{text:'BTCUSDT.P · candle tertutup · chart_db read only. AUTO memakai gate 2/3; MANUAL selalu menjalankan 6 AI. Provider Health dihitung dari hasil penggunaan nyata, tanpa ping berbayar tambahan.'}));
+    body.replaceChildren(h('p',{text:'BTCUSDT.P · candle tertutup · chart_db read only. AUTO memakai gate 2/4; MANUAL selalu menjalankan 8 AI. Provider Health dihitung dari hasil penggunaan nyata, tanpa ping berbayar tambahan.'}));
     const section=(title)=>{const details=h('details',{class:'settings-section',open:''},h('summary',{text:title}));body.append(details);return details;};
     const frameSection=section('Timeframe dan perhitungan');
     for(const [role,label] of [['trend','Tren'],['structure','Struktur'],['trigger','Pemicu']]) {
@@ -26,11 +26,11 @@ export async function openSettings(onSaved) {
       frameSection.append(h('label',{},h('span',{text:label}),select));fields.push(()=>{s.calculation.frames[role]=select.value;});
     }
     function numberField(parent,obj,key,prefix='') {
-      const input=h('input',{type:'number',value:obj[key],step:Number.isInteger(obj[key])&&!['displacement','bbStd','rvolMin','fvgAtr','cmfMin'].includes(key)?'1':'0.01',required:'','aria-label':prefix+descriptions[key]});
+      const input=h('input',{type:'number',value:obj[key],step:Number.isInteger(obj[key])&&!['displacement','bbStd','rvolMin','fvgAtr','cmfMin','oiChangeMinPct','priceMoveMinPct','fundingExtremePct','longShortExtreme','liquidationImbalance'].includes(key)?'1':'0.01',required:'','aria-label':prefix+descriptions[key]});
       parent.append(h('label',{},h('span',{text:descriptions[key]}),input));fields.push(()=>{obj[key]=Number(input.value);});
     }
     numberField(frameSection,s.calculation,'candleLimit');
-    for(const [key,label] of [['smc','SMC / ICT'],['indicators','Indikator'],['volume','Volume']]){const box=section(label);for(const k of Object.keys(s.calculation[key]))numberField(box,s.calculation[key],k,label+' ');}
+    for(const [key,label] of [['smc','SMC / ICT'],['indicators','Indikator'],['volume','Volume'],['derivatives','Derivatif / Market Positioning']]){const box=section(label);for(const k of Object.keys(s.calculation[key]))numberField(box,s.calculation[key],k,label+' ');}
 
     const healthSection=section('Provider Health');
     healthSection.append(h('p',{class:'settings-help',text:'Berdasarkan maksimal 12 panggilan terbaru per provider. Healthy ≥80% sukses dan panggilan terakhir sukses; 3 kegagalan beruntun atau success rate <50% (minimal 4 sampel) ditandai Down.'}));
@@ -46,12 +46,12 @@ export async function openSettings(onSaved) {
     }
     healthSection.append(healthGrid);
 
-    const team=section('Enam karakter · provider dan model');
+    const team=section('Delapan karakter · provider dan model');
     s.analysts.forEach((a,i)=>{
       const name=h('input',{value:a.name,maxlength:'40','aria-label':'Nama analis '+(i+1)});
       const provider=h('select',{'aria-label':'Provider analis '+(i+1)},...data.providers.map(p=>{const x=healthByProvider.get(p.provider);return h('option',{value:p.provider,text:p.label+' · '+healthText(x||{state:p.configured?'READY':'NOT_CONFIGURED'})});}));provider.value=a.provider;
       const model=h('input',{value:a.model,'aria-label':'Model analis '+(i+1),maxlength:'120'});
-      const row=h('div',{class:'analyst-settings'},h('b',{text:['SMC/ICT','Indikator','Volume'][Math.floor(i/2)]+' · '+(i%2+1)}),name,provider,model);
+      const row=h('div',{class:'analyst-settings'},h('b',{text:['SMC/ICT','Indikator','Volume','Derivatif'][Math.floor(i/2)]+' · '+(i%2+1)}),name,provider,model);
       provider.addEventListener('change',()=>{model.value=data.providers.find(p=>p.provider===provider.value).default_model;});team.append(row);
       fields.push(()=>{a.name=name.value;a.provider=provider.value;a.model=model.value;});
     });

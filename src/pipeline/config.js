@@ -2,13 +2,14 @@ import { PROVIDERS } from '../providers/registry.js';
 import { MODEL_RE } from '../lib/model-settings.js';
 
 export const FRAMES = { M5:300000, M15:900000, H1:3600000, H4:14400000, D1:86400000 };
-export const GROUPS = ['smc_ict','indicators','volume'];
+export const GROUPS = ['smc_ict','indicators','volume','derivatives'];
 export const SLOT_IDS = GROUPS.flatMap(group => [group+'_1',group+'_2']);
 export const DEFAULT_CALCULATION = {
   frames:{trend:'H1',structure:'M15',trigger:'M5'}, candleLimit:250,
   smc:{swing:3,range:80,eventWindow:20,atrPeriod:14,displacement:1,fvgAtr:.05,threshold:2},
   indicators:{emaFast:20,emaSlow:50,rsiPeriod:14,rsiBuy:55,rsiSell:45,macdFast:12,macdSlow:26,macdSignal:9,bbPeriod:20,bbStd:2,adxPeriod:14,adxMin:20,threshold:3},
-  volume:{period:20,rvolMin:1.2,cmfMin:.05,obvLookback:10}
+  volume:{period:20,rvolMin:1.2,cmfMin:.05,obvLookback:10},
+  derivatives:{oiLookback:3,oiChangeMinPct:.25,priceMoveMinPct:.10,fundingExtremePct:.03,longShortExtreme:1.2,liquidationImbalance:1.5,liquidationMinUsd:100000,threshold:2}
 };
 export function providerAvailable(provider, env) {
   return provider.meta.provider === 'workers-ai' ? typeof env.AI?.run === 'function' : !!env[provider.meta.keyEnv];
@@ -16,13 +17,23 @@ export function providerAvailable(provider, env) {
 export function defaultSettings(env) {
   const ready=PROVIDERS.filter(p=>providerAvailable(p,env));
   const defaults=ready.length?ready:PROVIDERS.filter(p=>p.meta.provider==='workers-ai');
-  return {version:1,symbol:'BTCUSDT.P',calculation:structuredClone(DEFAULT_CALCULATION),cronEnabled:true,discordEnabled:true,
-    analysts:SLOT_IDS.map((id,i)=>{const p=defaults[i%defaults.length];return {id,name:['SMC/ICT','Indikator','Volume'][Math.floor(i/2)]+' '+(i%2+1),group:GROUPS[Math.floor(i/2)],provider:p.meta.provider,model:String(env[p.meta.modelEnv]||p.meta.modelId)};})};
+  return {version:2,symbol:'BTCUSDT.P',calculation:structuredClone(DEFAULT_CALCULATION),cronEnabled:true,discordEnabled:true,
+    analysts:SLOT_IDS.map((id,i)=>{const p=defaults[i%defaults.length];return {id,name:['SMC/ICT','Indikator','Volume','Derivatif'][Math.floor(i/2)]+' '+(i%2+1),group:GROUPS[Math.floor(i/2)],provider:p.meta.provider,model:String(env[p.meta.modelEnv]||p.meta.modelId)};})};
 }
-const ranges={candleLimit:[100,1000],smc:{swing:[1,10],range:[20,200],eventWindow:[1,50],atrPeriod:[5,50],displacement:[.1,5],fvgAtr:[0,2],threshold:[1,5]},indicators:{emaFast:[2,100],emaSlow:[3,200],rsiPeriod:[2,50],rsiBuy:[50,90],rsiSell:[10,50],macdFast:[2,50],macdSlow:[3,100],macdSignal:[2,50],bbPeriod:[5,100],bbStd:[.5,4],adxPeriod:[5,50],adxMin:[0,60],threshold:[1,5]},volume:{period:[5,100],rvolMin:[.1,5],cmfMin:[.001,.5],obvLookback:[2,100]}};
-const decimals=new Set(['displacement','fvgAtr','rsiBuy','rsiSell','bbStd','adxMin','rvolMin','cmfMin']);
+const ranges={candleLimit:[100,1000],smc:{swing:[1,10],range:[20,200],eventWindow:[1,50],atrPeriod:[5,50],displacement:[.1,5],fvgAtr:[0,2],threshold:[1,5]},indicators:{emaFast:[2,100],emaSlow:[3,200],rsiPeriod:[2,50],rsiBuy:[50,90],rsiSell:[10,50],macdFast:[2,50],macdSlow:[3,100],macdSignal:[2,50],bbPeriod:[5,100],bbStd:[.5,4],adxPeriod:[5,50],adxMin:[0,60],threshold:[1,5]},volume:{period:[5,100],rvolMin:[.1,5],cmfMin:[.001,.5],obvLookback:[2,100]},derivatives:{oiLookback:[1,20],oiChangeMinPct:[0,20],priceMoveMinPct:[0,10],fundingExtremePct:[.001,1],longShortExtreme:[1.01,5],liquidationImbalance:[1,10],liquidationMinUsd:[0,1000000000],threshold:[1,4]}};
+const decimals=new Set(['displacement','fvgAtr','rsiBuy','rsiSell','bbStd','adxMin','rvolMin','cmfMin','oiChangeMinPct','priceMoveMinPct','fundingExtremePct','longShortExtreme','liquidationImbalance']);
 function bad(message){throw Object.assign(new Error(message),{code:'INVALID_SETTINGS'});}
+function migrateLegacySettings(input,env) {
+  if(!input||typeof input!=='object')return input;
+  if(!(Number(input.version||1)<=1&&Array.isArray(input.analysts)&&input.analysts.length===6))return input;
+  const defaults=defaultSettings(env),migrated=structuredClone(input);
+  migrated.version=2;
+  migrated.calculation={...defaults.calculation,...(migrated.calculation||{}),derivatives:{...defaults.calculation.derivatives,...(migrated.calculation?.derivatives||{})}};
+  migrated.analysts=[...migrated.analysts,...defaults.analysts.slice(6)];
+  return migrated;
+}
 export function validateSettings(input,env) {
+  input=migrateLegacySettings(input,env);
   const out=defaultSettings(env);
   if(!input || input.symbol!=='BTCUSDT.P')bad('Simbol harus BTCUSDT.P.');
   const c=input.calculation;
@@ -40,9 +51,9 @@ export function validateSettings(input,env) {
   }
   const i=c.indicators;
   if(i.emaFast>=i.emaSlow || i.macdFast>=i.macdSlow || i.rsiSell>=i.rsiBuy)bad('Periode cepat harus lebih kecil dari periode lambat; batas RSI SELL harus di bawah BUY.');
-  const minimum=Math.max(i.emaSlow+10,i.macdSlow+i.macdSignal+10,i.adxPeriod*3+5,c.smc.range+2*c.smc.swing,c.volume.period+c.volume.obvLookback+1);
+  const minimum=Math.max(i.emaSlow+10,i.macdSlow+i.macdSignal+10,i.adxPeriod*3+5,c.smc.range+2*c.smc.swing,c.volume.period+c.volume.obvLookback+1,c.derivatives.oiLookback+2);
   if(c.candleLimit<minimum)bad(`Jumlah candle minimal ${minimum} untuk parameter ini.`);
-  if(!Array.isArray(input.analysts)||input.analysts.length!==6)bad('Harus ada tepat enam analis.');
+  if(!Array.isArray(input.analysts)||input.analysts.length!==8)bad('Harus ada tepat delapan analis.');
   out.analysts=SLOT_IDS.map((id,index)=>{
     const a=input.analysts.find(x=>x.id===id);
     const p=PROVIDERS.find(p=>p.meta.provider===a?.provider);

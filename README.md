@@ -1,7 +1,7 @@
 # BYGA Trading Office
 
 Kantor trading 3D untuk BTCUSDT.P dengan perhitungan deterministik multi-timeframe,
-enam karakter analis AI, cron lima menit, dan notifikasi Discord bersyarat.
+delapan karakter analis AI, cron lima menit, dan notifikasi Discord bersyarat.
 
 ## Alur produksi
 
@@ -9,7 +9,7 @@ enam karakter analis AI, cron lima menit, dan notifikasi Discord bersyarat.
    timeframe yang dipilih untuk tren, struktur, dan pemicu. Simbol tampilan
    `BTCUSDT.P` dipetakan ke `BTCUSDT` perpetual. Adapter market hanya menjalankan
    **SELECT**; tidak ada ingest, fallback exchange, atau penulisan ke chart_db.
-2. Hitung tiga snapshot **tanpa AI**: SMC/ICT, indikator, dan volume. Browser dan
+2. Hitung empat snapshot **tanpa AI**: SMC/ICT, indikator, volume, dan derivatives / market positioning. Browser dan
    server memakai `calculateSnapshot` yang sama; server selalu menghitung ulang
    sehingga snapshot dari browser tidak dipercaya sebagai sumber keputusan.
 3. Masing-masing kelompok menggabungkan timeframe tren/struktur/pemicu. Arah tren
@@ -18,14 +18,14 @@ enam karakter analis AI, cron lima menit, dan notifikasi Discord bersyarat.
 4. Engine mengklasifikasikan **market regime** secara deterministik dari timeframe
    tren: TREND_UP, TREND_DOWN, EXPANSION_UP, EXPANSION_DOWN, COMPRESSION, RANGE,
    atau UNKNOWN. Regime memakai EMA/DI, ADX, ATR relatif, dan return 20 candle.
-5. **AUTO / cron:** enam AI hanya dipanggil jika minimal **2 dari 3 kelompok**
+5. **AUTO / cron:** delapan AI hanya dipanggil jika minimal **2 dari 4 kelompok**
    deterministik sepakat BUY atau SELL. Jika gate gagal, run disimpan sebagai
    `filtered` tanpa biaya AI.
-6. **MANUAL:** tombol **Mulai Analisis** selalu memanggil keenam AI setelah snapshot
+6. **MANUAL:** tombol **Mulai Analisis** selalu memanggil kedelapan AI setelah snapshot
    tervalidasi, walaupun gate 2/3 tidak lolos. Manual boleh dijalankan berulang pada
    candle yang sama, misalnya setelah mengganti provider/model atau parameter.
-7. Keenam AI tetap independen: dua hanya menerima SMC/ICT, dua hanya indikator,
-   dan dua hanya volume. Dalam setiap pasangan, slot 1 memakai lens **base-case** dan
+7. Kedelapan AI tetap independen: dua hanya menerima SMC/ICT, dua hanya indikator,
+   dua hanya volume, dan dua hanya derivatives / market positioning. Dalam setiap pasangan, slot 1 memakai lens **base-case** dan
    slot 2 **adversarial/invalidation-first** untuk mengurangi correlated error.
    Prompt **tidak pernah mengirim arah gate/initial_direction**. AI menerima regime,
    peran timeframe, prioritas keputusan, review lens, dan snapshot kelompoknya
@@ -39,8 +39,8 @@ enam karakter analis AI, cron lima menit, dan notifikasi Discord bersyarat.
    histori belum cukup atau gagal dibaca, bobot aman kembali ke **1.0**.
    Confidence model hanya menjadi modifier kecil **0.9–1.1**, sehingga satu model
    tidak dapat mendominasi hanya karena mengaku sangat yakin.
-9. Keputusan AI dianggap decisive bila ada minimal **4 vote sukses**, minimal
-   **3 vote mentah** pada arah pemenang, dan weighted share minimal **60%**.
+9. Keputusan AI dianggap decisive bila ada minimal **6 vote sukses**, minimal
+   **4 vote mentah** pada arah pemenang, dan weighted share minimal **60%**.
    Untuk run yang memiliki gate deterministik, arah weighted AI **harus sama**
    dengan arah deterministic agar status menjadi `approved`.
 10. Manual tanpa konsensus deterministic tetap menghasilkan analisis:
@@ -51,7 +51,7 @@ enam karakter analis AI, cron lima menit, dan notifikasi Discord bersyarat.
     lolos dan weighted AI mengonfirmasi arah tersebut. Payload mencantumkan regime,
     weighted share, raw BUY/SELL, confidence per analis, harga, dan ID analisis.
 
-Enam karakter dan bos berjalan, duduk, berdiskusi dengan gelembung vote/alasan,
+Delapan karakter analis dan bos berjalan, duduk, berdiskusi dengan gelembung vote/alasan,
 lalu kembali ke meja. Dua staf pendukung tetap di meja. Bos memimpin tanpa vote
 tambahan. UI yang terbuka memantau hasil cron dan menampilkan meeting baru;
 ketika web ditutup, analisis dan pengiriman tetap berjalan di server.
@@ -70,6 +70,7 @@ dipakai bersama oleh browser, manual, dan cron pada candle berikutnya.
 | SMC/ICT | Pivot terkonfirmasi, BOS/CHOCH, liquidity sweep dua arah, FVG aktif, displacement, order block, dealing range premium/discount | Radius pivot 3, range 80, event 20, ATR 14, displacement 1× ATR, minimum FVG 0.05× ATR, minimum 2 konfirmasi |
 | Indikator | EMA, RSI Wilder, MACD, Bollinger Bands, ADX/DI Wilder | EMA 20/50, RSI 14 dengan batas 55/45, MACD 12/26/9, BB 20/2, ADX 14 ≥20, minimum 3 konfirmasi |
 | Volume | Relative volume terhadap candle sebelumnya, CMF, perubahan OBV, arah badan candle | Periode 20, RVOL ≥1.2, CMF absolut ≥0.05, jendela OBV 10 |
+| Derivatif / Positioning | Ekspansi Open Interest vs arah harga, funding ekstrem, Long/Short Ratio, imbalance liquidation | Lookback OI 3, ΔOI ≥0.25%, gerak harga ≥0.10%, funding ekstrem ±0.03%, L/S ekstrem 1.2×, liquidation imbalance 1.5×, minimum 2 konfirmasi |
 
 Default 250 candle per timeframe. Pengaturan divalidasi agar periode, ambang,
 urutan timeframe, dan jumlah candle masuk akal. Timeframe tersedia M5, M15, H1,
@@ -79,7 +80,9 @@ Pivot baru tersedia setelah candle di sisi kanan tertutup; tidak memakai data
 masa depan. FVG yang sudah penuh terisi dan order block yang invalid dinonaktifkan.
 SMC/ICT di sini adalah definisi algoritmik yang dapat diatur, bukan semua varian
 interpretasi diskresioner ICT. CMF/OBV merupakan proksi OHLCV, **bukan** delta
-transaksi atau order-flow asli. Data stale, candle kurang, OHLC rusak, celah waktu,
+transaksi atau order-flow asli. Group Derivatif membaca tabel `derivative_metrics`
+secara **SELECT-only** dari chart_db; Open Interest, Funding Rate, Long/Short Ratio,
+dan Liquidation tidak ditulis oleh repo ini. Data stale, candle kurang, OHLC rusak, celah waktu,
 atau sumber perpetual tidak dikenal menghentikan pemrosesan sebelum AI.
 
 chart_db memiliki data Bybit, Binance Futures, serta OKX Swap. Volume OKX memakai
@@ -88,11 +91,11 @@ terakhir dari sumber yang sama. Bila belum cukup, hasilnya NETRAL; satuan tidak
 dicampur dan ditampilkan dalam snapshot. Harga berasal dari candle yang tersedia
 di chart_db; metadata sumber dicatat.
 
-## Enam karakter AI
+## Delapan karakter AI
 
 Setiap slot memiliki nama, provider, dan model sendiri. Provider yang sama boleh
 dipakai di semua slot, termasuk dengan model berbeda. Model override diisolasi
-per panggilan; tidak ada persyaratan enam provider unik.
+per panggilan; tidak ada persyaratan delapan provider unik.
 
 Provider: Gemini, Groq, OpenRouter, Mistral, Hugging Face, Cohere, NVIDIA,
 SambaNova, Vercel AI Gateway, dan **Cloudflare Workers AI**.
@@ -145,7 +148,7 @@ Alternatif: secret Pages `DISCORD_WEBHOOK_URL`, yang mengambil prioritas atas ni
 web. Checkbox hapus hanya menghapus nilai yang disimpan melalui web.
 
 Tujuan webhook dibatasi HTTPS `discord.com`/`discordapp.com`; redirect ditolak.
-Mention dinonaktifkan. Outbox dibuat atomik bersama analisis dan enam hasil vote.
+Mention dinonaktifkan. Outbox dibuat atomik bersama analisis dan delapan hasil vote.
 Pengiriman yang sudah diakui Discord tidak diulang, dan retry tidak memanggil AI
 lagi. HTTP 429/5xx atau kegagalan jaringan dicoba ulang oleh pemeriksaan berikutnya;
 4xx permanen ditandai gagal. Sinyal tertunda **kedaluwarsa setelah 15 menit** agar
@@ -237,8 +240,8 @@ diberikan melalui adapter SELECT-only dan pengujian yang menolak operasi tulis.
 | Endpoint | Fungsi |
 | --- | --- |
 | GET /api/market | Candle tervalidasi dan parameter untuk perhitungan browser tanpa AI |
-| GET/PUT /api/settings | Parameter, enam karakter, Provider Health, toggle cron/Discord, status webhook |
-| POST /api/analyze | Analisis manual: hitung ulang server, validasi preview, selalu panggil 6 AI, weighted vote; Discord hanya jika gate deterministic juga lolos |
+| GET/PUT /api/settings | Parameter, delapan karakter, Provider Health, toggle cron/Discord, status webhook |
+| POST /api/analyze | Analisis manual: hitung ulang server, validasi preview, selalu panggil 8 AI, weighted vote; Discord hanya jika gate deterministic juga lolos |
 | GET /api/status | Run terbaru dan jumlah antrean Discord untuk pemantauan UI |
 | GET /api/history | Histori baru serta legacy, termasuk pemeriksaan tersaring |
 | GET /api/analysis/:id | Snapshot kelompok dan hasil vote lengkap |

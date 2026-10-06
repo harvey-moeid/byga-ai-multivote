@@ -25,14 +25,14 @@
 </main>
 <footer class="office-dock">
   <div class="dock-market"><span class="market-code">BTC<span>USDT</span></span><b id="price">—</b><small id="price-change">Belum ada snapshot</small></div>
-  <button id="result-shortcut" class="dock-consensus" aria-label="Lihat hasil analisis"><small>KONSENSUS</small><b id="consensus">—</b><span id="responses">0</span><span id="responses-total"> / 6 vote</span></button>
+  <button id="result-shortcut" class="dock-consensus" aria-label="Lihat hasil analisis"><small>KONSENSUS</small><b id="consensus">—</b><span id="responses">0</span><span id="responses-total"> / 8 vote</span></button>
   <nav class="dock-nav" aria-label="Panel kantor"><button data-panel="providers">Analis</button><button data-panel="results">Hasil</button><button data-panel="history">Riwayat</button><button id="settings-btn">Setting</button></nav>
   <button id="analyze-btn" class="office-run" disabled><svg viewBox="0 0 24 24" fill="currentColor"><path d="m8 5 11 7-11 7z"/></svg><span id="analyze-label">Mulai Analisis</span></button>
   <div id="run-message" class="office-message" role="status">Memuat perhitungan tanpa AI…</div>
 </footer>
 <dialog id="office-panel" class="office-panel">
   <header class="office-panel-head"><div><small>BYGA WORKSPACE</small><h2 id="panel-title">Tim analis</h2></div><button id="panel-close" class="office-icon" aria-label="Tutup panel" title="Tutup">×</button></header>
-  <section data-panel-content="providers"><div class="provider-picker-head"><b>Enam karakter analis</b><span id="provider-count">6 slot</span></div><div id="provider-options" class="office-providers">Memuat tim…</div><p id="provider-help">Dua analis SMC/ICT, dua indikator, dua volume. Provider boleh sama.</p><p id="team-note">6 analis AI · 1 bos pemimpin · 2 staf pendukung</p><button id="edit-analysts">Atur karakter dan model</button><p id="cron-status"></p></section>
+  <section data-panel-content="providers"><div class="provider-picker-head"><b>Delapan karakter analis</b><span id="provider-count">8 slot</span></div><div id="provider-options" class="office-providers">Memuat tim…</div><p id="provider-help">Dua analis SMC/ICT, dua indikator, dua volume, dua derivatif/market positioning. Provider boleh sama.</p><p id="team-note">8 analis AI · 1 bos pemimpin</p><button id="edit-analysts">Atur karakter dan model</button><p id="cron-status"></p></section>
   <section data-panel-content="results" hidden>
     <div class="result-summary"><span id="result-status">BELUM ADA HASIL</span><small id="last-updated">—</small><p id="consensus-note">Menunggu analisis pertama.</p></div>
     <div id="snapshot-groups" class="snapshot-groups"></div><p id="gate-note"></p><p id="discord-status"></p>

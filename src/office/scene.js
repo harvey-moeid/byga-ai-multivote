@@ -26,7 +26,7 @@ let ambientNextAt = performance.now() + AMBIENT_INTERVAL_MS, ambientRemaining = 
 const speech = document.createElement('div');
 speech.className = 'office-speech'; speech.hidden = true; $('speech-layer').append(speech);
 const projected = new THREE.Vector3(), speakerPosition = new THREE.Vector3();
-const participant = actor => actor.member.boss || actor.member.id < 6;
+const participant = actor => actor.member.boss || actor.member.id < 8;
 
 function status(next) {
   phase = next;
@@ -184,14 +184,15 @@ function discuss(data, error) {
   cameraView('meeting');
   updateScreens(office.screens, data, error ? 'ERROR' : 'READY');
   const results = Array.isArray(data?.results) ? data.results : [];
+  const voteTotal=data?.voting?.total_models||8,voteRequired=data?.voting?.required||4;
   speechQueue = error ? [{ id:8, name:'Bos', text:error, seconds:5 }] : [
     { id:8, name:'Bos', text:'Respons AI sudah diterima. Kita tinjau vote dan alasannya.', seconds:3 },
     ...results.map((r, index) => ({
-      id:Math.max(0,Math.min(5,['smc_ict_1','smc_ict_2','indicators_1','indicators_2','volume_1','volume_2'].indexOf(r.analyst_id))), name:r.analyst_name || r.provider_label || r.provider || 'Analis',
+      id:Math.max(0,Math.min(7,['smc_ict_1','smc_ict_2','indicators_1','indicators_2','volume_1','volume_2','derivatives_1','derivatives_2'].indexOf(r.analyst_id))), name:r.analyst_name || r.provider_label || r.provider || 'Analis',
       text:r.status === 'success' ? [r.signal, r.reason || 'Vote diterima.'].filter(Boolean).join(' · ') : 'Respons gagal: ' + (r.error || r.error_code || r.status),
       seconds:4
     })),
-    { id:8, name:'Bos', text:data?.voting?.approved ? 'Disetujui: '+data.majority_signal+'. '+data.voting.support+'/6 mendukung arah awal. Discord mengikuti pengaturan.' : 'Dukungan '+(data?.voting?.support||0)+'/6. Syarat empat vote belum terpenuhi; tidak dikirim ke Discord.', seconds:5 }
+    { id:8, name:'Bos', text:data?.voting?.approved ? 'Disetujui: '+data.majority_signal+'. '+data.voting.support+'/'+voteTotal+' mendukung arah awal. Discord mengikuti pengaturan.' : 'Dukungan '+(data?.voting?.support||0)+'/'+voteTotal+'. Syarat minimal '+voteRequired+' vote searah belum terpenuhi; tidak dikirim ke Discord.', seconds:5 }
   ];
   queueIndex = 0; speechUntil = 0; speech.hidden = true; speaking = null;
   return new Promise(resolve => { discussionDone = resolve; });
@@ -206,6 +207,7 @@ function discussPublic(data) {
     { id:0, name:'Analis 1', text:'Memeriksa struktur market dan area penting.', seconds:3 },
     { id:2, name:'Analis 3', text:'Membandingkan indikator lintas timeframe.', seconds:3 },
     { id:4, name:'Analis 5', text:'Meninjau volume dan kekuatan pergerakan.', seconds:3 },
+    { id:6, name:'Analis 7', text:'Meninjau open interest, funding, positioning, dan liquidation.', seconds:3 },
     { id:8, name:'Bos', text:'Hasil terbaru: '+signal+'.', seconds:4 }
   ];
   queueIndex = 0; speechUntil = 0; speech.hidden = true; speaking = null;
@@ -214,7 +216,7 @@ function discussPublic(data) {
 function goHome() {
   speech.hidden = true; speaking = null;
   status('returning'); cameraView('office');
-  actors.filter(participant).forEach((actor, index) => setRoute(actor, returnRoute(actor.member), (6 - index) * .5, actor.member.homeAngle));
+  actors.filter(participant).forEach((actor, index) => setRoute(actor, returnRoute(actor.member), (8 - index) * .5, actor.member.homeAngle));
 }
 function updateSpeech(now) {
   if (phase === 'discussing' && now >= speechUntil) {

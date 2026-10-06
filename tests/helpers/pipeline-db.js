@@ -27,9 +27,31 @@ export function setup(mode='up') {
   const db=new DatabaseSync(':memory:'),chart=new DatabaseSync(':memory:');
   for(const file of readdirSync(new URL('../../migrations/',import.meta.url)).filter(x=>x.endsWith('.sql')).sort())db.exec(readFileSync(new URL('../../migrations/'+file,import.meta.url),'utf8'));
   chart.exec('CREATE TABLE candles (symbol TEXT,timeframe TEXT,open_time INTEGER,open REAL,high REAL,low REAL,close REAL,volume REAL,source TEXT,is_closed INTEGER)');
+  chart.exec("CREATE TABLE derivative_metrics (symbol TEXT,metric TEXT,timeframe TEXT,ts INTEGER,value REAL,value2 REAL,value3 REAL,source TEXT,PRIMARY KEY(symbol,metric,timeframe,ts))");
   const insert=chart.prepare('INSERT INTO candles VALUES (?,?,?,?,?,?,?,?,?,1)');
-  const market={symbol:'BTCUSDT.P',series:{}};
-  for(const tf of ['H1','M15','M5']) {market.series[tf]=candles(tf,250,mode);for(const c of market.series[tf])insert.run('BTCUSDT',tf,c.timestamp,c.open,c.high,c.low,c.close,c.volume,c.source);}
+  const market={symbol:'BTCUSDT.P',series:{},derivatives:{funding:[],frames:{}}};
+  const derivativeInsert=chart.prepare('INSERT INTO derivative_metrics VALUES (?,?,?,?,?,?,?,?)');
+  for(const tf of ['H1','M15','M5']) {
+    market.series[tf]=candles(tf,250,mode);
+    for(const c of market.series[tf])insert.run('BTCUSDT',tf,c.timestamp,c.open,c.high,c.low,c.close,c.volume,c.source);
+    market.derivatives.frames[tf]={open_interest:[],long_short_ratio:[],liquidation:[]};
+    const recent=market.series[tf].slice(-4);
+    recent.forEach((c,i)=>{
+      const progress=i/Math.max(1,recent.length-1),oi=mode==='up'?100000000*(1+progress*.012):mode==='down'?100000000*(1+progress*.012):100000000;
+      const ratio=mode==='up'?.75:mode==='down'?1.35:1;
+      const liq=mode==='up'?[600000,100000,500000]:mode==='down'?[600000,500000,100000]:[200000,100000,100000];
+      const oiRow={ts:c.timestamp,value:oi,value2:oi/(c.close||1),value3:null,source:'fixture'};
+      const lsRow={ts:c.timestamp,value:ratio,value2:ratio/(1+ratio),value3:1/(1+ratio),source:'fixture'};
+      const liqRow={ts:c.timestamp,value:liq[0],value2:liq[1],value3:liq[2],source:'fixture'};
+      for(const [metric,row] of [['open_interest',oiRow],['long_short_ratio',lsRow],['liquidation',liqRow]]) {
+        derivativeInsert.run('BTCUSDT',metric,tf,row.ts,row.value,row.value2,row.value3,row.source);
+        market.derivatives.frames[tf][metric].push(row);
+      }
+    });
+  }
+  const fundingRow={ts:market.series.M5.at(-1).timestamp,value:mode==='up'?-.0004:mode==='down'?.0004:0,value2:null,value3:null,source:'fixture'};
+  derivativeInsert.run('BTCUSDT','funding_rate','',fundingRow.ts,fundingRow.value,null,null,fundingRow.source);
+  market.derivatives.funding.push(fundingRow);
   const env={DB:adapter(db),CHART_DB:adapter(chart,true),AI:{run:async()=>({response:'{"signal":"BUY","reason":"snapshot"}'})},SESSION_SECRET:'unit-test-secret'};
   return {env,db,chart,market,settings:defaultSettings(env),close:()=>{db.close();chart.close();}};
 }
