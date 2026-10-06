@@ -4,6 +4,32 @@ export class ChartDataError extends Error {
 }
 // This is the only market-data adapter used by the new pipeline. SELECT only.
 // BTCUSDT.P is the displayed perpetual symbol; chart_db stores it as BTCUSDT.
+function normalizeDerivativeRows(rows=[]) {
+  return rows.map(row=>({ts:Number(row.ts),value:Number(row.value),value2:row.value2==null?null:Number(row.value2),value3:row.value3==null?null:Number(row.value3),source:row.source}))
+    .filter(row=>Number.isFinite(row.ts)&&Number.isFinite(row.value));
+}
+async function derivativeRows(db,metric,timeframe,limit,now) {
+  try {
+    const r=await db.prepare('SELECT ts,value,value2,value3,source FROM derivative_metrics WHERE symbol = ? AND metric = ? AND timeframe = ? AND ts <= ? ORDER BY ts DESC LIMIT ?').bind('BTCUSDT',metric,timeframe,now,limit).all();
+    return normalizeDerivativeRows((r.results||[]).reverse());
+  } catch(error) {
+    if(/no such table[^\n]*derivative_metrics/i.test(String(error?.message||error)))return [];
+    throw error;
+  }
+}
+async function readDerivatives(env,settings,now) {
+  const d=settings.calculation.derivatives,limit=Math.max(8,d.oiLookback+2);
+  const fundingPromise=derivativeRows(env.CHART_DB,'funding_rate','',8,now),frames={};
+  await Promise.all([...new Set(Object.values(settings.calculation.frames))].map(async frame=>{
+    const [open_interest,long_short_ratio,liquidation]=await Promise.all([
+      derivativeRows(env.CHART_DB,'open_interest',frame,limit,now),
+      derivativeRows(env.CHART_DB,'long_short_ratio',frame,limit,now),
+      derivativeRows(env.CHART_DB,'liquidation',frame,limit,now)
+    ]);
+    frames[frame]={open_interest,long_short_ratio,liquidation};
+  }));
+  return {funding:await fundingPromise,frames};
+}
 export async function readChart(env,settings,now=Date.now()) {
   if(!env.CHART_DB?.prepare)throw new ChartDataError('Binding CHART_DB belum tersedia.');
   const series={}, sources={};
@@ -20,5 +46,5 @@ export async function readChart(env,settings,now=Date.now()) {
     if(providers.some(p=>!['bybit','binance_futures','okx_swap'].includes(p)))throw new ChartDataError(`${frame}: sumber perpetual tidak dikenal.`);
     series[frame]=candles;sources[frame]=providers;
   }
-  return {symbol:'BTCUSDT.P',storage_symbol:'BTCUSDT',market_type:'perpetual',data_source:'chart_db',exchange:'chart_db',fetched_at:new Date(now).toISOString(),series,sources};
+  return {symbol:'BTCUSDT.P',storage_symbol:'BTCUSDT',market_type:'perpetual',data_source:'chart_db',exchange:'chart_db',fetched_at:new Date(now).toISOString(),series,sources,derivatives:await readDerivatives(env,settings,now)};
 }
