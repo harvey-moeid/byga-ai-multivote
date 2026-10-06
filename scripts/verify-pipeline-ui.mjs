@@ -30,7 +30,7 @@ try {
         id:'MANUAL-1',created_at:new Date().toISOString(),status:'manual_review',mode:'manual',
         meeting:true,gate_passed:false,initial_direction:'NEUTRAL',deterministic_direction:'NEUTRAL',
         majority_signal:'BUY',snapshot,results:[],
-        voting:{approved:false,support:4,buy:4,sell:2,total_models:6,success:6,weighted_share_pct:66.67},
+        voting:{approved:false,support:5,required:4,buy:5,sell:3,total_models:8,success:8,weighted_share_pct:62.5},
         delivery:{state:'idle',eligible:false,reason:'MANUAL_WITHOUT_DETERMINISTIC_GATE'}
       }});
     }
