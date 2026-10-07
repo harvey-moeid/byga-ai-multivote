@@ -12,16 +12,17 @@ function summarize(rows=[],configured=true) {
   if(!configured)return {state:'NOT_CONFIGURED',label:LABELS.NOT_CONFIGURED,configured:false,samples:0,success_rate_pct:null,avg_latency_ms:null,last_checked_at:null,last_error_code:'NOT_CONFIGURED'};
   if(!rows.length)return {state:'READY',label:LABELS.READY,configured:true,samples:0,success_rate_pct:null,avg_latency_ms:null,last_checked_at:null,last_error_code:null};
 
-  const success=rows.filter(r=>r.status==='success');
+  const operationalSuccess=row=>row.status==='success'||row.error_code==='SEMANTIC_INVALID_AI_RESPONSE';
+  const success=rows.filter(operationalSuccess);
   const successRate=success.length/rows.length*100;
   let consecutiveFailures=0;
-  for(const row of rows){if(row.status==='success')break;consecutiveFailures++;}
+  for(const row of rows){if(operationalSuccess(row))break;consecutiveFailures++;}
   let state='DEGRADED';
   if(consecutiveFailures>=3||(rows.length>=4&&successRate<50))state='DOWN';
-  else if(rows[0]?.status==='success'&&successRate>=80)state='HEALTHY';
+  else if(operationalSuccess(rows[0])&&successRate>=80)state='HEALTHY';
 
   const durations=success.map(r=>Number(r.duration_ms)).filter(Number.isFinite);
-  const lastFailure=rows.find(r=>r.status!=='success');
+  const lastFailure=rows.find(r=>!operationalSuccess(r));
   return {
     state,label:LABELS[state],configured:true,samples:rows.length,
     success_rate_pct:Number(successRate.toFixed(1)),
