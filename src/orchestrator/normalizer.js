@@ -68,3 +68,53 @@ export function parseSignal(input) {
 
   return { signal: "ERROR", reason: "", confidence:null };
 }
+
+
+const ANALYST_EVIDENCE_METRICS = {
+  smc_ict: new Set(['structure','sweep','fvg','orderBlock','displacement','bias']),
+  indicators: new Set(['ema','rsi','macd','bollinger','adx']),
+  volume: new Set(['flow','candleDirection']),
+  derivatives: new Set(['openInterest','funding','longShort','liquidation'])
+};
+
+function evidenceDirection(group, frame, metric) {
+  if(!frame)return null;
+  if(group==='smc_ict'&&metric==='bias')return frame.measurements?.bias||null;
+  if(group==='volume')return frame.measurements?.[metric]||null;
+  return frame.votes?.[metric]||null;
+}
+
+export function parseAnalystDecision(input,{group,frames}={}) {
+  const text=clean(input);
+  let obj;
+  try { obj=JSON.parse(text); }
+  catch {
+    throw Object.assign(new Error('Respons analis harus JSON valid tanpa teks tambahan.'),{code:'SEMANTIC_INVALID_AI_RESPONSE'});
+  }
+  const signal=String(obj?.signal||'').trim().toUpperCase();
+  const confidence=confidenceValue(obj?.confidence);
+  const reason=String(obj?.reason||'').trim();
+  if(!['BUY','SELL'].includes(signal)||confidence==null||!reason||reason.length>600) {
+    throw Object.assign(new Error('Signal, confidence, atau reason analis tidak memenuhi kontrak.'),{code:'SEMANTIC_INVALID_AI_RESPONSE'});
+  }
+  const allowed=ANALYST_EVIDENCE_METRICS[group];
+  const evidence=Array.isArray(obj?.directional_evidence)?obj.directional_evidence:[];
+  if(!allowed||evidence.length<2||evidence.length>6) {
+    throw Object.assign(new Error('Directional evidence analis tidak memenuhi kontrak.'),{code:'SEMANTIC_INVALID_AI_RESPONSE'});
+  }
+  const seen=new Set(),verified=[];
+  for(const item of evidence) {
+    const timeframe=String(item?.timeframe||'').trim().toUpperCase();
+    const metric=String(item?.metric||'').trim();
+    const supports=String(item?.supports||'').trim().toUpperCase();
+    const key=timeframe+':'+metric;
+    if(!frames?.[timeframe]||!allowed.has(metric)||supports!==signal||seen.has(key)) {
+      throw Object.assign(new Error('Directional evidence analis tidak dapat diverifikasi.'),{code:'SEMANTIC_INVALID_AI_RESPONSE'});
+    }
+    if(evidenceDirection(group,frames[timeframe],metric)!==signal) {
+      throw Object.assign(new Error('Directional evidence tidak didukung snapshot deterministik.'),{code:'SEMANTIC_INVALID_AI_RESPONSE'});
+    }
+    seen.add(key);verified.push({timeframe,metric,supports});
+  }
+  return {signal,confidence,reason,directional_evidence:verified};
+}
