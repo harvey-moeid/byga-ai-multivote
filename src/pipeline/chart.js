@@ -23,6 +23,13 @@ function freshDerivativeRows(rows,reference,maxAge) {
   if(!Number.isFinite(latest)||reference-latest>maxAge||latest>reference)return [];
   return rows;
 }
+function trailingSameSource(rows=[]) {
+  if(!rows.length)return [];
+  const source=rows.at(-1)?.source;
+  let start=rows.length-1;
+  while(start>0&&rows[start-1]?.source===source)start--;
+  return rows.slice(start);
+}
 async function liquidationAggregate(db,frame,candle) {
   if(!candle)return [];
   const start=Number(candle.timestamp),end=start+FRAMES[frame];
@@ -46,7 +53,7 @@ async function readDerivatives(env,settings,now,series) {
       derivativeRows(env.CHART_DB,'long_short_ratio',frame,limit,reference),
       liquidationAggregate(env.CHART_DB,frame,last)
     ]);
-    const open_interest=freshDerivativeRows(openInterestRows,reference,maxAge);
+    const open_interest=freshDerivativeRows(trailingSameSource(openInterestRows),reference,maxAge);
     const long_short_ratio=freshDerivativeRows(longShortRows,reference,maxAge);
     frames[frame]={open_interest,long_short_ratio,liquidation};
   }));
