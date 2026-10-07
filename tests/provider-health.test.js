@@ -26,6 +26,19 @@ describe('provider health',()=>{
     expect(h.last_error_code).toBe('RATE_LIMITED');
   });
 
+  it('does not classify semantic-invalid model output as a provider outage',()=>{
+    const rows=[
+      row('a','error','2026-10-07T03:00:00Z','SEMANTIC_INVALID_AI_RESPONSE',700),
+      row('a','error','2026-10-07T02:59:00Z','SEMANTIC_INVALID_AI_RESPONSE',650),
+      row('a','error','2026-10-07T02:58:00Z','SEMANTIC_INVALID_AI_RESPONSE',620),
+      row('a','success','2026-10-07T02:57:00Z',null,500)
+    ];
+    const h=summarizeProviderHealth(rows,providers).find(x=>x.provider==='a');
+    expect(h.state).toBe('HEALTHY');
+    expect(h.success_rate_pct).toBe(100);
+    expect(h.last_error_code).toBeNull();
+  });
+
   it('marks three consecutive failures down and mixed results degraded',()=>{
     const down=[
       row('b','error','2026-10-05T03:00:00Z','AUTH_ERROR'),
