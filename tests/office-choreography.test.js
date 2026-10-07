@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Vector3 } from 'three';
-import { TEAM, meetingRoute, returnRoute, shortestAngle, adaptiveQuality, initialQuality, QUALITY, advanceActors } from '../src/office/choreography.js';
+import { TEAM, meetingRoute, returnRoute, ambientRoute, shortestAngle, adaptiveQuality, initialQuality, QUALITY, advanceActors } from '../src/office/choreography.js';
 
 describe('office meeting routes', () => {
   it('seats eight analysts and the boss at unique destinations facing the table', () => {
@@ -62,6 +62,47 @@ describe('office meeting routes', () => {
     });
     simulate();
     actors.forEach(a=>expect([a.root.position.x,a.root.position.z]).toEqual(a.member.home));
+  });
+});
+
+describe('office ambient routes', () => {
+  it('routes boss visits to every analyst workstation through a clear aisle', () => {
+    const boss=TEAM.find(member=>member.boss);
+    const analysts=TEAM.filter(member=>!member.boss);
+    for (const analyst of analysts) {
+      const plan=ambientRoute(boss,0,analyst);
+      const destination=plan.path.at(-1);
+      expect(plan.label).toBe('Mengunjungi meja Analis '+(analyst.id+1));
+      expect(plan.targetId).toBe(analyst.id);
+      expect(plan.path).toContainEqual([-1,-.6]);
+      expect(plan.path).toContainEqual([.35,-.6]);
+      expect(destination).toEqual([analyst.home[0],analyst.home[1]+.72]);
+      expect(plan.angle).toBe(Math.PI);
+      expect(plan.back.at(-1)).toEqual(boss.home);
+      expect(Math.hypot(destination[0]-analyst.home[0],destination[1]-analyst.home[1])).toBeCloseTo(.72);
+
+      const route=[boss.home,...plan.path];
+      for(let i=1;i<route.length;i++){
+        for(let step=0;step<=20;step++){
+          const t=step/20;
+          const x=route[i-1][0]*(1-t)+route[i][0]*t;
+          const z=route[i-1][1]*(1-t)+route[i][1]*t;
+          for(const deskX of [-6.1,-4.4,-2.7,-1]){
+            for(const deskZ of [.45,3.35]){
+              const insideDesk=x>deskX-.82&&x<deskX+.82&&z>deskZ-.56&&z<deskZ+.56;
+              expect(insideDesk).toBe(false);
+            }
+          }
+        }
+      }
+    }
+  });
+
+  it('falls back to a real analyst when no explicit visit target is supplied', () => {
+    const boss=TEAM.find(member=>member.boss);
+    const plan=ambientRoute(boss,0);
+    expect(plan.targetId).toBe(0);
+    expect(plan.path.at(-1)).toEqual([TEAM[0].home[0],TEAM[0].home[1]+.72]);
   });
 });
 
