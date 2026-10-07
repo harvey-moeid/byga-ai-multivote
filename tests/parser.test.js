@@ -78,5 +78,23 @@ describe("parseAnalystDecision", () => {
     expect(()=>parseAnalystDecision(JSON.stringify({...base,directional_evidence:[base.directional_evidence[0],base.directional_evidence[0]]}),context)).toThrow();
     expect(()=>parseAnalystDecision(JSON.stringify({...base,directional_evidence:[base.directional_evidence[0],{timeframe:"M5",metric:"macd",supports:"BUY"}]}),context)).toThrow();
     expect(()=>parseAnalystDecision("SIGNAL: BUY\nCONFIDENCE: 99\nREASON: prose",context)).toThrow();
+    expect(()=>parseAnalystDecision(JSON.stringify({...base,confidence:101}),context)).toThrow();
+  });
+
+  it("does not let one global funding observation count as two evidence items",()=>{
+    const derivatives={
+      group:"derivatives",parameters:{},
+      frames:{
+        H1:{votes:{funding:"BUY",openInterest:"NEUTRAL",longShort:"NEUTRAL",liquidation:"NEUTRAL"}},
+        M5:{votes:{funding:"BUY",openInterest:"NEUTRAL",longShort:"NEUTRAL",liquidation:"NEUTRAL"}}
+      }
+    };
+    expect(()=>parseAnalystDecision(JSON.stringify({
+      signal:"BUY",confidence:70,reason:"Funding is supportive.",
+      directional_evidence:[
+        {timeframe:"H1",metric:"funding",supports:"BUY"},
+        {timeframe:"M5",metric:"funding",supports:"BUY"}
+      ]
+    }),derivatives)).toThrow();
   });
 });
