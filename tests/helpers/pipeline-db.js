@@ -23,6 +23,32 @@ export function candles(tf,count=250,mode='up',now=Date.now()) {
     return {timestamp:end-(count-1-i)*interval,open,close,high:Math.max(open,close)+.5,low:Math.min(open,close)-.5,volume:i===count-1?500:100,source:'bybit'};
   });
 }
+
+function deterministicTestReply(_model,{messages}={}) {
+  const user=messages?.filter(m=>m.role==='user').at(-1)?.content||'{}';
+  let payload={};
+  try { payload=JSON.parse(user); } catch {}
+  const group=payload.group_snapshot||{},parameters=group.parameters||{},allowed=new Set(payload.semantic_contract?.allowed_metrics||[]);
+  const candidates={BUY:[],SELL:[]};
+  const add=(signal,timeframe,metric)=>{
+    if((signal==='BUY'||signal==='SELL')&&allowed.has(metric)&&!candidates[signal].some(x=>x.timeframe===timeframe&&x.metric===metric))candidates[signal].push({timeframe,metric,supports:signal});
+  };
+  for(const [timeframe,frame] of Object.entries(group.frames||{})) {
+    for(const [metric,signal] of Object.entries(frame.votes||{}))add(signal,timeframe,metric);
+    if(group.group==='smc_ict')add(frame.measurements?.bias,timeframe,'bias');
+    if(group.group==='volume') {
+      const m=frame.measurements||{};
+      const cmf=Number(m.cmf),obv=Number(m.obvChange);
+      add(cmf>=Number(parameters.cmfMin)?'BUY':cmf<=-Number(parameters.cmfMin)?'SELL':'NEUTRAL',timeframe,'cmf');
+      add(obv>0?'BUY':obv<0?'SELL':'NEUTRAL',timeframe,'obv');
+      add(m.flow,timeframe,'flow');add(m.candleDirection,timeframe,'candleDirection');
+    }
+  }
+  const signal=candidates.BUY.length>=2?'BUY':candidates.SELL.length>=2?'SELL':'BUY';
+  const evidence=candidates[signal].slice(0,3);
+  return {response:JSON.stringify({signal,confidence:evidence.length>=2?76:10,directional_evidence:evidence,reason:evidence.length>=2?'Verified deterministic fixture evidence.':'Insufficient deterministic fixture evidence.'})};
+}
+
 export function setup(mode='up') {
   const db=new DatabaseSync(':memory:'),chart=new DatabaseSync(':memory:');
   for(const file of readdirSync(new URL('../../migrations/',import.meta.url)).filter(x=>x.endsWith('.sql')).sort())db.exec(readFileSync(new URL('../../migrations/'+file,import.meta.url),'utf8'));
@@ -52,6 +78,6 @@ export function setup(mode='up') {
   const fundingRow={ts:market.series.M5.at(-1).timestamp,value:mode==='up'?-.0004:mode==='down'?.0004:0,value2:null,value3:null,source:'fixture'};
   derivativeInsert.run('BTCUSDT','funding_rate','',fundingRow.ts,fundingRow.value,null,null,fundingRow.source);
   market.derivatives.funding.push(fundingRow);
-  const env={DB:adapter(db),CHART_DB:adapter(chart,true),AI:{run:async()=>({response:'{"signal":"BUY","reason":"snapshot"}'})},SESSION_SECRET:'unit-test-secret'};
+  const env={DB:adapter(db),CHART_DB:adapter(chart,true),AI:{run:deterministicTestReply},SESSION_SECRET:'unit-test-secret'};
   return {env,db,chart,market,settings:defaultSettings(env),close:()=>{db.close();chart.close();}};
 }
