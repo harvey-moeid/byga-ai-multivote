@@ -63,19 +63,84 @@ export function analystPrompt(snapshot,analyst) {
   };
 }
 
-export async function callAnalyst(env,snapshot,analyst) {
-  const p=PROVIDERS.find(p=>p.meta.provider===analyst.provider),started=Date.now();
-  const row={id:crypto.randomUUID(),analysis_id:null,analyst_id:analyst.id,analyst_name:analyst.name,provider:analyst.provider,provider_label:p?.meta.providerLabel||analyst.provider,model:analyst.model,role:analyst.group,vote_index:Number(analyst.id.at(-1)),vote_group:analyst.id,data_source:'chart_db',confidence:null,directional_evidence:[],duration_ms:0,error:null,error_code:null,adapter_version:p?.meta.adapterVersion||'unknown',created_at:new Date().toISOString()};
+const FALLBACK_ERROR_CODES=new Set([
+  'PROVIDER_NOT_CONFIGURED','MISSING_API_KEY','MISSING_AI_BINDING','AUTH_ERROR','AUTH_FORBIDDEN',
+  'BILLING_REQUIRED','MODEL_TIER_RESTRICTED','RATE_LIMITED','MODEL_NOT_FOUND','LOCATION_UNSUPPORTED',
+  'PROVIDER_SERVER_ERROR','PROVIDER_HTTP_ERROR','AI_TIMEOUT','EMPTY_AI_RESPONSE',
+  'INVALID_AI_RESPONSE','SEMANTIC_INVALID_AI_RESPONSE','PROVIDER_ERROR'
+]);
+
+function normalizedProviderError(error) {
+  return {code:error?.code||'PROVIDER_ERROR',status:error?.name==='TimeoutError'?'timeout':'error'};
+}
+
+export function shouldFallbackProvider(error) {
+  return FALLBACK_ERROR_CODES.has(error?.code||'PROVIDER_ERROR')||error?.name==='TimeoutError';
+}
+
+async function runAnalystAttempt(env,snapshot,analyst,target) {
+  const p=PROVIDERS.find(candidate=>candidate.meta.provider===target?.provider),started=Date.now();
+  if(!p||!providerAvailable(p,env))throw Object.assign(new Error('Provider karakter ini belum dikonfigurasi.'),{code:'PROVIDER_NOT_CONFIGURED',provider:target?.provider});
   try {
-    if(!p||!providerAvailable(p,env))throw Object.assign(new Error('Provider karakter ini belum dikonfigurasi.'),{code:'PROVIDER_NOT_CONFIGURED'});
-    const raw=await p.run({env:{...env,[p.meta.modelEnv]:analyst.model},prompt:analystPrompt(snapshot,analyst),timeoutMs:Math.max(1000,Math.min(60000,Number(env.AI_TIMEOUT_MS)||60000)),maxRetries:0});
+    const raw=await p.run({env:{...env,[p.meta.modelEnv]:target.model},prompt:analystPrompt(snapshot,analyst),timeoutMs:Math.max(1000,Math.min(60000,Number(env.AI_TIMEOUT_MS)||60000)),maxRetries:0});
     const answer=String(raw.raw_answer||''),group=snapshot.groups[analyst.group];
     const parsed=parseAnalystDecision(answer,{group:analyst.group,frames:group.frames,parameters:group.parameters});
-    Object.assign(row,{status:'success',signal:parsed.signal,confidence:parsed.confidence,directional_evidence:parsed.directional_evidence,reason:parsed.reason.slice(0,600),raw_answer:answer.slice(0,16000)});
+    return {p,answer,parsed,duration_ms:Date.now()-started};
   } catch(error) {
-    Object.assign(row,{status:error.name==='TimeoutError'?'timeout':'error',signal:null,reason:'',raw_answer:'',error_code:error.code||'PROVIDER_ERROR',error:'Respons analis gagal ('+(error.code||'PROVIDER_ERROR')+').'});
+    error.provider_meta=p;
+    error.duration_ms=Date.now()-started;
+    throw error;
   }
-  row.duration_ms=Date.now()-started;return row;
+}
+
+export async function callAnalyst(env,snapshot,analyst) {
+  const started=Date.now(),primary={provider:analyst.provider,model:analyst.model};
+  const fallback=analyst.fallback&&analyst.fallback.provider!==analyst.provider?analyst.fallback:null;
+  const primaryMeta=PROVIDERS.find(p=>p.meta.provider===primary.provider);
+  const row={
+    id:crypto.randomUUID(),analysis_id:null,analyst_id:analyst.id,analyst_name:analyst.name,
+    provider:primary.provider,provider_label:primaryMeta?.meta.providerLabel||primary.provider,model:primary.model,
+    primary_provider:primary.provider,primary_model:primary.model,
+    fallback_provider:fallback?.provider||null,fallback_model:fallback?.model||null,fallback_used:false,fallback_reason:null,attempts:[],
+    role:analyst.group,vote_index:Number(analyst.id.at(-1)),vote_group:analyst.id,data_source:'chart_db',
+    confidence:null,directional_evidence:[],duration_ms:0,error:null,error_code:null,
+    adapter_version:primaryMeta?.meta.adapterVersion||'unknown',created_at:new Date().toISOString()
+  };
+  const targets=[primary,...(fallback?[fallback]:[])];
+  let firstFailureCode=null;
+  for(let index=0;index<targets.length;index++) {
+    const target=targets[index],attemptStarted=Date.now();
+    try {
+      const attempt=await runAnalystAttempt(env,snapshot,analyst,target);
+      row.attempts.push({provider:target.provider,provider_label:attempt.p.meta.providerLabel,model:target.model,status:'success',duration_ms:attempt.duration_ms,error_code:null});
+      Object.assign(row,{
+        provider:target.provider,provider_label:attempt.p.meta.providerLabel,model:target.model,adapter_version:attempt.p.meta.adapterVersion||'unknown',
+        fallback_used:index>0,fallback_reason:index>0?firstFailureCode:null,
+        status:'success',signal:attempt.parsed.signal,confidence:attempt.parsed.confidence,
+        directional_evidence:attempt.parsed.directional_evidence,reason:attempt.parsed.reason.slice(0,600),
+        raw_answer:attempt.answer.slice(0,16000),error:null,error_code:null
+      });
+      row.duration_ms=Date.now()-started;
+      return row;
+    } catch(error) {
+      const normalized=normalizedProviderError(error),meta=error?.provider_meta||PROVIDERS.find(p=>p.meta.provider===target.provider);
+      const attemptDuration=Number.isFinite(error?.duration_ms)?error.duration_ms:Date.now()-attemptStarted;
+      row.attempts.push({provider:target.provider,provider_label:meta?.meta.providerLabel||target.provider,model:target.model,status:normalized.status,duration_ms:attemptDuration,error_code:normalized.code});
+      if(index===0)firstFailureCode=normalized.code;
+      const canFallback=index===0&&fallback&&shouldFallbackProvider(error);
+      if(canFallback)continue;
+      Object.assign(row,{
+        provider:target.provider,provider_label:meta?.meta.providerLabel||target.provider,model:target.model,adapter_version:meta?.meta.adapterVersion||'unknown',
+        fallback_used:index>0,fallback_reason:index>0?firstFailureCode:null,
+        status:normalized.status,signal:null,reason:'',raw_answer:'',error_code:normalized.code,
+        error:'Respons analis gagal ('+normalized.code+').'
+      });
+      row.duration_ms=Date.now()-started;
+      return row;
+    }
+  }
+  row.duration_ms=Date.now()-started;
+  return row;
 }
 
 export async function pipelineStatus(env) {

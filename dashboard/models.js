@@ -74,11 +74,38 @@ export async function openSettings(onSaved) {
     const team=section('Delapan karakter · provider dan model');
     s.analysts.forEach((a,i)=>{
       const name=h('input',{value:a.name,maxlength:'40','aria-label':'Nama analis '+(i+1)});
-      const provider=h('select',{'aria-label':'Provider analis '+(i+1)},...data.providers.map(p=>{const x=healthByProvider.get(p.provider)||{state:p.configured?'READY':'NOT_CONFIGURED'};return h('option',{value:p.provider,text:p.label+' · '+healthStatusText(x)});}));provider.value=a.provider;
-      const model=h('input',{value:a.model,'aria-label':'Model analis '+(i+1),maxlength:'120'});
-      const row=h('div',{class:'analyst-settings'},h('b',{text:['SMC/ICT','Indikator','Volume','Derivatif'][Math.floor(i/2)]+' · '+(i%2+1)}),name,provider,model);
-      provider.addEventListener('change',()=>{model.value=data.providers.find(p=>p.provider===provider.value).default_model;});team.append(row);
-      fields.push(()=>{a.name=name.value;a.provider=provider.value;a.model=model.value;});
+      const provider=h('select',{'aria-label':'Provider utama analis '+(i+1)},...data.providers.map(p=>{const x=healthByProvider.get(p.provider)||{state:p.configured?'READY':'NOT_CONFIGURED'};return h('option',{value:p.provider,text:'Utama · '+p.label+' · '+healthStatusText(x)});}));provider.value=a.provider;
+      const model=h('input',{value:a.model,'aria-label':'Model utama analis '+(i+1),maxlength:'120'});
+      const fallbackProvider=h('select',{'aria-label':'Provider fallback analis '+(i+1)},
+        h('option',{value:'',text:'Fallback · nonaktif'}),
+        ...data.providers.map(p=>{const x=healthByProvider.get(p.provider)||{state:p.configured?'READY':'NOT_CONFIGURED'};return h('option',{value:p.provider,text:'Fallback · '+p.label+' · '+healthStatusText(x)});})
+      );
+      fallbackProvider.value=a.fallback?.provider||'';
+      const fallbackModel=h('input',{value:a.fallback?.model||'','aria-label':'Model fallback analis '+(i+1),maxlength:'120',placeholder:'Model fallback'});
+      const syncFallback=()=>{
+        for(const option of fallbackProvider.options)if(option.value)option.disabled=option.value===provider.value;
+        if(fallbackProvider.value===provider.value){fallbackProvider.value='';fallbackModel.value='';}
+        fallbackModel.disabled=!fallbackProvider.value;
+      };
+      provider.addEventListener('change',()=>{
+        model.value=data.providers.find(p=>p.provider===provider.value).default_model;
+        syncFallback();
+      });
+      fallbackProvider.addEventListener('change',()=>{
+        fallbackModel.value=fallbackProvider.value?data.providers.find(p=>p.provider===fallbackProvider.value).default_model:'';
+        syncFallback();
+      });
+      syncFallback();
+      const row=h('div',{class:'analyst-settings'},
+        h('b',{text:['SMC/ICT','Indikator','Volume','Derivatif'][Math.floor(i/2)]+' · '+(i%2+1)}),
+        name,provider,model,fallbackProvider,fallbackModel,
+        h('small',{class:'settings-help',text:'Fallback dipakai oleh karakter yang sama hanya jika provider/model utama gagal; jumlah vote tetap satu.'})
+      );
+      team.append(row);
+      fields.push(()=>{
+        a.name=name.value;a.provider=provider.value;a.model=model.value;
+        a.fallback=fallbackProvider.value?{provider:fallbackProvider.value,model:fallbackModel.value}:null;
+      });
     });
     const automation=section('Cron dan Discord');
     for(const [key,label] of [['cronEnabled','Pemeriksaan otomatis setiap 5 menit'],['discordEnabled','Kirim hasil yang disetujui ke Discord']]) {

@@ -95,6 +95,16 @@ describe('real SQL read-only source and run guards',()=>{
     expect(JSON.parse(db.prepare('SELECT evidence_json FROM analysis_results LIMIT 1').get().evidence_json).length).toBeGreaterThanOrEqual(2);
     expect(db.prepare('SELECT COUNT(*) AS n FROM analysis_results').get().n).toBe(8);
   });
+  it('falls back per character without creating extra votes',async()=>{
+    const {env,db}=use(),ai=vi.spyOn(env.AI,'run'),settings=defaultSettings(env);
+    settings.analysts=settings.analysts.map(a=>({...a,provider:'groq',model:'openai/gpt-oss-120b',fallback:{provider:'workers-ai',model:a.model}}));
+    db.prepare('INSERT INTO app_settings (key,value,updated_at) VALUES (?,?,?)').run('pipeline_settings',JSON.stringify(settings),'now');
+    const r=await runPipeline(env);
+    expect(r.results).toHaveLength(8);expect(r.voting.total_models).toBe(8);expect(r.voting.success).toBe(8);
+    expect(ai).toHaveBeenCalledTimes(8);
+    expect(r.results.every(x=>x.fallback_used&&x.primary_provider==='groq'&&x.provider==='workers-ai')).toBe(true);
+    expect(r.results.every(x=>x.fallback_reason==='PROVIDER_NOT_CONFIGURED'&&x.attempts.length===2)).toBe(true);
+  });
   it('deduplicates cron per candle while allowing repeated manual analyses',async()=>{
     const {env,db}=use();const ai=vi.spyOn(env.AI,'run');
     const firstManual=await runPipeline(env),secondManual=await runPipeline(env);
@@ -119,6 +129,16 @@ describe('settings, authentication, and Discord delivery',()=>{
     const s=defaultSettings({AI:{run(){}}});expect(validateSettings(s,{AI:{run(){}}}).analysts).toHaveLength(8);
     s.calculation.indicators.emaFast=80;expect(()=>validateSettings(s,{})).toThrow();
     s.calculation.indicators.emaFast=20;s.calculation.frames.trigger='H1';expect(()=>validateSettings(s,{})).toThrow();
+  });
+  it('migrates v2 settings to per-character fallback and rejects a same-provider fallback',()=>{
+    const env={AI:{run(){}},GROQ_API_KEY:'test'},legacy=defaultSettings(env);
+    legacy.version=2;for(const a of legacy.analysts)delete a.fallback;
+    const migrated=validateSettings(legacy,env);
+    expect(migrated.version).toBe(3);
+    expect(migrated.analysts.every(a=>a.fallback===null||a.fallback.provider!==a.provider)).toBe(true);
+    expect(migrated.analysts.some(a=>a.fallback)).toBe(true);
+    migrated.analysts[0].fallback={provider:migrated.analysts[0].provider,model:migrated.analysts[0].model};
+    expect(()=>validateSettings(migrated,env)).toThrow(/Fallback provider\/model/);
   });
   it('encrypts webhook URLs, rejects arbitrary destinations, and never returns the token',async()=>{
     const {env,db,settings}=use();const url='https://discord.com/api/webhooks/123/unit_test_token';

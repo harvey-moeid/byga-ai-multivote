@@ -22,7 +22,7 @@ delapan karakter analis AI, cron lima menit, dan notifikasi Discord bersyarat.
    deterministik sepakat BUY atau SELL. Jika gate gagal, run disimpan sebagai
    `filtered` tanpa biaya AI.
 6. **MANUAL:** tombol **Mulai Analisis** selalu memanggil kedelapan AI setelah snapshot
-   tervalidasi, walaupun gate 2/3 tidak lolos. Manual boleh dijalankan berulang pada
+   tervalidasi, walaupun gate 2/4 tidak lolos. Manual boleh dijalankan berulang pada
    candle yang sama, misalnya setelah mengganti provider/model atau parameter.
 7. Kedelapan AI tetap independen: dua hanya menerima SMC/ICT, dua hanya indikator,
    dua hanya volume, dan dua hanya derivatives / market positioning. Dalam setiap pasangan, slot 1 memakai lens **base-case** dan
@@ -120,6 +120,15 @@ Default karakter diambil dari provider yang tersedia; Workers AI menjadi pilihan
 ketika provider eksternal tidak tersedia. Provider/model bisa diganti dari web.
 `/api/models` adalah pengaturan default provider lama; alur baru memakai
 `/api/settings` dengan model per karakter.
+
+Setiap karakter juga dapat memiliki **satu fallback provider + model** yang berbeda
+dari provider utama. Fallback hanya dicoba setelah attempt utama gagal karena
+provider belum terkonfigurasi, auth/billing/tier, rate limit, model tidak tersedia,
+lokasi tidak didukung, timeout, server/HTTP error, respons kosong, atau respons yang
+gagal kontrak semantic. Karakter tetap menghasilkan **maksimal satu vote**, sehingga
+fallback tidak pernah menambah jumlah voter atau mengubah threshold konsensus.
+Primary dan fallback attempt dicatat terpisah agar Provider Health tetap melihat
+kegagalan provider utama walaupun fallback akhirnya berhasil.
 
 ### Provider Health
 
