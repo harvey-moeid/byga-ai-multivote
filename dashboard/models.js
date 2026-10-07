@@ -17,6 +17,29 @@ export async function openSettings(onSaved) {
     const s=structuredClone(data.settings),fields=[];
     const healthByProvider=new Map((data.provider_health||[]).map(x=>[x.provider,x]));
     const healthText=x=>({HEALTHY:'Healthy',DEGRADED:'Degraded',DOWN:'Down',READY:'Ready',NOT_CONFIGURED:'Not configured'})[x?.state]||'Unknown';
+    const healthReasonLabels={
+      AUTH_ERROR:'API key ditolak',
+      AUTH_FORBIDDEN:'Akses API ditolak',
+      BILLING_REQUIRED:'Billing diperlukan',
+      MODEL_TIER_RESTRICTED:'Model tidak tersedia di paket akun',
+      RATE_LIMITED:'Rate limit',
+      MODEL_NOT_FOUND:'Model tidak ditemukan',
+      LOCATION_UNSUPPORTED:'Lokasi tidak didukung',
+      PROVIDER_SERVER_ERROR:'Server provider bermasalah',
+      PROVIDER_HTTP_ERROR:'HTTP error provider',
+      AI_TIMEOUT:'Timeout',
+      EMPTY_AI_RESPONSE:'Respons AI kosong',
+      INVALID_AI_RESPONSE:'Format respons AI tidak valid',
+      MISSING_API_KEY:'API key belum tersedia',
+      MISSING_AI_BINDING:'Workers AI binding belum tersedia',
+      PROVIDER_NOT_CONFIGURED:'Provider belum dikonfigurasi',
+      PROVIDER_ERROR:'Provider error'
+    };
+    const healthReason=x=>x?.last_error_code?(healthReasonLabels[x.last_error_code]||String(x.last_error_code).replaceAll('_',' ').toLowerCase()):'';
+    const healthStatusText=x=>{
+      const status=healthText(x),reason=healthReason(x);
+      return reason&&['DOWN','DEGRADED'].includes(x?.state)?status+' — '+reason:status;
+    };
     const healthTime=value=>value?new Date(value).toLocaleString('id-ID',{dateStyle:'short',timeStyle:'short',timeZone:'Asia/Jakarta'}):'Belum pernah dipakai';
     body.replaceChildren(h('p',{text:'BTCUSDT.P · candle tertutup · chart_db read only. AUTO memakai gate 2/4; MANUAL selalu menjalankan 8 AI. Provider Health dihitung dari hasil penggunaan nyata, tanpa ping berbayar tambahan.'}));
     const section=(title)=>{const details=h('details',{class:'settings-section',open:''},h('summary',{text:title}));body.append(details);return details;};
@@ -38,10 +61,12 @@ export async function openSettings(onSaved) {
     for(const p of data.providers){
       const x=healthByProvider.get(p.provider)||{state:p.configured?'READY':'NOT_CONFIGURED',samples:0,success_rate_pct:null,avg_latency_ms:null,last_checked_at:null,last_error_code:null};
       const metrics=x.samples?x.success_rate_pct+'% sukses · '+x.samples+' sampel'+(x.avg_latency_ms!=null?' · '+x.avg_latency_ms+' ms':''):'Belum ada histori panggilan';
+      const reason=healthReason(x);
       healthGrid.append(h('div',{class:'provider-health-card state-'+String(x.state||'UNKNOWN').toLowerCase()},
-        h('div',{class:'provider-health-head'},h('b',{text:p.label}),h('span',{class:'provider-health-badge',text:healthText(x)})),
+        h('div',{class:'provider-health-head'},h('b',{text:p.label}),h('span',{class:'provider-health-badge',text:healthStatusText(x)})),
         h('small',{text:metrics}),
-        h('small',{text:'Terakhir: '+healthTime(x.last_checked_at)+(x.last_error_code?' · '+x.last_error_code:'')})
+        h('small',{text:'Pemeriksaan terakhir: '+healthTime(x.last_checked_at)}),
+        ...(x.last_error_code?[h('small',{text:'Error terakhir: '+reason+' ('+x.last_error_code+')'})]:[])
       ));
     }
     healthSection.append(healthGrid);
@@ -49,7 +74,7 @@ export async function openSettings(onSaved) {
     const team=section('Delapan karakter · provider dan model');
     s.analysts.forEach((a,i)=>{
       const name=h('input',{value:a.name,maxlength:'40','aria-label':'Nama analis '+(i+1)});
-      const provider=h('select',{'aria-label':'Provider analis '+(i+1)},...data.providers.map(p=>{const x=healthByProvider.get(p.provider);return h('option',{value:p.provider,text:p.label+' · '+healthText(x||{state:p.configured?'READY':'NOT_CONFIGURED'})});}));provider.value=a.provider;
+      const provider=h('select',{'aria-label':'Provider analis '+(i+1)},...data.providers.map(p=>{const x=healthByProvider.get(p.provider)||{state:p.configured?'READY':'NOT_CONFIGURED'};return h('option',{value:p.provider,text:p.label+' · '+healthStatusText(x)});}));provider.value=a.provider;
       const model=h('input',{value:a.model,'aria-label':'Model analis '+(i+1),maxlength:'120'});
       const row=h('div',{class:'analyst-settings'},h('b',{text:['SMC/ICT','Indikator','Volume','Derivatif'][Math.floor(i/2)]+' · '+(i%2+1)}),name,provider,model);
       provider.addEventListener('change',()=>{model.value=data.providers.find(p=>p.provider===provider.value).default_model;});team.append(row);
