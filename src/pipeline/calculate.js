@@ -85,14 +85,17 @@ function derivativePriceAt(c,row) {
 }
 export function derivativesFrame(c,data={},s={}) {
   const oi=data.open_interest||[],funding=data.funding||[],longShort=data.long_short_ratio||[],liquidation=data.liquidation||[];
-  const oiLookback=Math.min(Number(s.oiLookback)||1,oi.length-1);
+  const oiLookback=Math.max(1,Number(s.oiLookback)||1);
   let openInterestChangePct=null,priceChangePct=null,openInterestSignal='NEUTRAL';
-  if(oiLookback>=1) {
+  if(oi.length>=oiLookback+1) {
     const oiNowRow=oi.at(-1),oiThenRow=oi.at(-oiLookback-1);
+    const step=c.length>1?Math.max(1,Number(c.at(-1).timestamp)-Number(c.at(-2).timestamp)):0;
+    const actualSpan=Number(oiNowRow?.ts)-Number(oiThenRow?.ts),expectedSpan=step*oiLookback;
+    const spanAligned=step>0&&Number.isFinite(actualSpan)&&Math.abs(actualSpan-expectedSpan)<=step/2;
     const oiNow=Number(oiNowRow?.value),oiThen=Number(oiThenRow?.value);
-    const priceNow=derivativePriceAt(c,oiNowRow),priceThen=derivativePriceAt(c,oiThenRow);
-    if(Number.isFinite(oiNow)&&Number.isFinite(oiThen)&&oiThen>0)openInterestChangePct=(oiNow-oiThen)/oiThen*100;
-    if(Number.isFinite(priceNow)&&Number.isFinite(priceThen)&&priceThen>0)priceChangePct=(priceNow-priceThen)/priceThen*100;
+    const priceNow=spanAligned?derivativePriceAt(c,oiNowRow):null,priceThen=spanAligned?derivativePriceAt(c,oiThenRow):null;
+    if(spanAligned&&Number.isFinite(oiNow)&&Number.isFinite(oiThen)&&oiThen>0)openInterestChangePct=(oiNow-oiThen)/oiThen*100;
+    if(spanAligned&&Number.isFinite(priceNow)&&Number.isFinite(priceThen)&&priceThen>0)priceChangePct=(priceNow-priceThen)/priceThen*100;
     if(openInterestChangePct!=null&&priceChangePct!=null&&openInterestChangePct>=s.oiChangeMinPct&&Math.abs(priceChangePct)>=s.priceMoveMinPct)openInterestSignal=direction(priceChangePct);
   }
   const fundingRow=funding.at(-1),fundingRaw=fundingRow?.value,fundingRatePct=Number.isFinite(fundingRaw)?fundingRaw*100:null;
@@ -112,7 +115,7 @@ export function derivativesFrame(c,data={},s={}) {
     liquidationUsd,longLiquidationUsd,shortLiquidationUsd,
     timestamps:{openInterest:oi.at(-1)?.ts??null,funding:fundingRow?.ts??null,longShort:ls.ts??null,liquidation:liq.ts??null},
     sources:{openInterest:oi.at(-1)?.source||null,funding:fundingRow?.source||null,longShort:ls.source||null,liquidation:liq.source||null}
-  },note:'Derivatif memakai OI yang disejajarkan ke timestamp candle, funding ekstrem dan long/short ratio secara kontrarian, serta liquidation yang diagregasi ke timeframe. Evidence stale/misaligned menjadi NETRAL. Data dibaca read-only dari chart_db.'};
+  },note:'Derivatif memakai OI dengan configured lookback, source continuity, dan timestamp alignment terhadap candle; funding ekstrem dan long/short ratio bersifat kontrarian; liquidation M5 diagregasi ke timeframe. Evidence kurang, stale, cross-source, atau misaligned menjadi NETRAL. Data dibaca read-only dari chart_db.'};
 }
 export function smcFrame(c,s) {
   const atrSeries=wilder(ranges(c),s.atrPeriod),atr=atrSeries.at(-1)??0;
