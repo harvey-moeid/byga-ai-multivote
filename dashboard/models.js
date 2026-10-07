@@ -25,7 +25,7 @@ export async function openSettings(onSaved) {
   if(document.getElementById('pipeline-settings'))return;
   const titleBlock=h('div',{class:'settings-title'},h('small',{class:'settings-kicker',text:'BYGA PIPELINE'}),h('h2',{text:'Pengaturan'}),h('p',{text:'Atur scanner, analis AI, provider fallback, cron, dan Discord.'}));
   const body=h('div',{class:'pipeline-settings-body'},h('div',{class:'settings-loading'},'Memuat pengaturan…'));
-  const close=h('button',{type:'button',class:'detail-close',text:'Tutup','aria-label':'Tutup pengaturan'});
+  const close=h('button',{type:'button',class:'detail-close',text:'Tutup','aria-label':'Tutup'});
   const card=h('section',{class:'detail-card pipeline-settings-card',role:'dialog','aria-modal':'true','aria-labelledby':'settings-title'},h('div',{class:'detail-head'},titleBlock,close),body);
   titleBlock.querySelector('h2').id='settings-title';
   const wrap=h('div',{id:'pipeline-settings',class:'detail-modal'},card);
