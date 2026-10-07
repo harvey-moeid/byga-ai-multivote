@@ -132,11 +132,12 @@ try {
   await desktop.click('[data-panel="providers"]');
   assert.equal(await desktop.locator('.office-providers .provider-option').count(),8);
   await desktop.click('#edit-analysts');
-  await desktop.locator('[aria-label="Provider analis 1"]').waitFor();
-  assert.equal(await desktop.locator('[aria-label^="Provider analis"]').count(),8);
+  await desktop.locator('[aria-label="Provider utama analis 1"]').waitFor();
+  assert.equal(await desktop.locator('[aria-label^="Provider utama analis"]').count(),8);
+  assert.equal(await desktop.locator('[aria-label^="Provider fallback analis"]').count(),8);
   assert.equal(await desktop.locator('.provider-health-card').count(),1);
   assert.match(await desktop.locator('.provider-health-badge').textContent(),/Healthy/);
-  await desktop.fill('[aria-label="Model analis 1"]','@cf/test/custom-model');
+  await desktop.fill('[aria-label="Model utama analis 1"]','@cf/test/custom-model');
   await desktop.getByRole('button',{name:'Simpan pengaturan',exact:true}).click();
   await desktop.waitForFunction(()=>document.querySelector('#pipeline-settings [role="status"]').textContent.includes('Tersimpan'));
   assert.equal(settings.analysts[0].model,'@cf/test/custom-model');
@@ -158,7 +159,8 @@ try {
   assert(autoButton.left>=0&&autoButton.right<=autoButton.viewport,'AUTO button must stay inside mobile viewport');
   await mobile.click('[data-panel="providers"]');
   await mobile.click('#edit-analysts');
-  await mobile.locator('[aria-label="Provider analis 1"]').waitFor();
+  await mobile.locator('[aria-label="Provider utama analis 1"]').waitFor();
+  assert.equal(await mobile.locator('[aria-label^="Provider fallback analis"]').count(),8);
   const settingsLayout=await mobile.evaluate(()=>{
     const modal=document.querySelector('#pipeline-settings'),card=modal.querySelector('.pipeline-settings-card'),body=modal.querySelector('.pipeline-settings-body');
     const rect=card.getBoundingClientRect();
