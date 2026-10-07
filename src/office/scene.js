@@ -140,10 +140,15 @@ function startAmbientEvent(now = performance.now()) {
   const pool = actors.filter(participant).sort(() => Math.random() - .5);
   const count = Math.min(pool.length, 1 + Math.floor(Math.random() * 3));
   const selected = pool.slice(0, count);
+  const stationaryAnalysts=actors.filter(actor=>!actor.member.boss && !selected.includes(actor));
+  const allAnalysts=actors.filter(actor=>!actor.member.boss);
+  const visitPool=stationaryAnalysts.length ? stationaryAnalysts : allAnalysts;
+  const bossVisitTarget=visitPool[Math.floor(Math.random()*visitPool.length)] || null;
   selected.forEach((actor, index) => {
     const preferred = actor.member.boss ? index : actor.member.id % 2;
     const variant = Math.random() < .72 ? preferred : Math.floor(Math.random() * 4);
-    actor.ambientPlan = ambientRoute(actor.member, variant);
+    const target=actor.member.boss && Math.abs(variant)%4===0 ? bossVisitTarget?.member : null;
+    actor.ambientPlan = ambientRoute(actor.member, variant, target);
     setRoute(actor, actor.ambientPlan.path, index * .32, actor.ambientPlan.angle, 0);
   });
   ambientBatch = { actors:selected, stage:'out', dwellUntil:0 };
