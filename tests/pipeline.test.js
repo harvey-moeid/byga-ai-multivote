@@ -23,6 +23,8 @@ describe('deterministic formulas and gates',()=>{
     expect(g('BUY','BUY','NEUTRAL').direction).toBe('BUY');
     expect(g('SELL','NEUTRAL','SELL').direction).toBe('SELL');
     expect(g('BUY','SELL','NEUTRAL').meeting).toBe(false);
+    const split=g('BUY','BUY','SELL','SELL');
+    expect(split.meeting).toBe(false);expect(split.direction).toBe('NEUTRAL');expect(split.reason).toBe('GROUP_CONSENSUS_TIE');
     expect(g('NEUTRAL','NEUTRAL','NEUTRAL').meeting).toBe(false);
   });
   it('requires four successful votes for the initial direction, including partial failures',()=>{
@@ -77,8 +79,9 @@ describe('real SQL read-only source and run guards',()=>{
   it('filters neutral auto runs but lets manual analysis call all eight AI',async()=>{
     const {env,db}=use('flat');const ai=vi.spyOn(env.AI,'run'),fetchMock=vi.fn();vi.stubGlobal('fetch',fetchMock);
     const auto=await runPipeline(env,{trigger:'cron'});expect(auto.status).toBe('filtered');expect(auto.results).toHaveLength(0);expect(ai).not.toHaveBeenCalled();
-    const manual=await runPipeline(env);expect(manual.status).toBe('manual_review');expect(manual.meeting).toBe(true);expect(manual.gate_passed).toBe(false);expect(manual.results).toHaveLength(8);expect(ai).toHaveBeenCalledTimes(8);
-    expect(manual.majority_signal).toBe('BUY');expect(manual.delivery.eligible).toBe(false);expect(fetchMock).not.toHaveBeenCalled();expect(db.prepare('SELECT COUNT(*) AS n FROM analyses').get().n).toBe(2);
+    const manual=await runPipeline(env);expect(manual.status).toBe('manual_inconclusive');expect(manual.meeting).toBe(true);expect(manual.gate_passed).toBe(false);expect(manual.results).toHaveLength(8);expect(ai).toHaveBeenCalledTimes(8);
+    expect(manual.results.every(r=>r.status==='error'&&r.error_code==='SEMANTIC_INVALID_AI_RESPONSE')).toBe(true);
+    expect(manual.majority_signal).toBeNull();expect(manual.delivery.eligible).toBe(false);expect(fetchMock).not.toHaveBeenCalled();expect(db.prepare('SELECT COUNT(*) AS n FROM analyses').get().n).toBe(2);
   });
   it('runs eight characters on the same provider and isolates each model/snapshot',async()=>{
     const {env,db}=use();const ai=vi.spyOn(env.AI,'run');
@@ -87,6 +90,9 @@ describe('real SQL read-only source and run guards',()=>{
     const a={...defaultSettings(env).analysts[0],model:'@cf/test/custom-model'};
     await callAnalyst(env,r.snapshot,a);expect(ai.mock.calls.at(-1)[0]).toBe('@cf/test/custom-model');
     const prompt=JSON.parse(analystPrompt(r.snapshot,a).user);expect(prompt.group_snapshot.group).toBe('smc_ict');expect(prompt.groups).toBeUndefined();expect(prompt.initial_direction).toBeUndefined();expect(prompt.market_regime.label).toBeTruthy();
+    expect(prompt.locked_rubric.mode).toBe('STRUCTURE_CONFLUENCE');expect(prompt.semantic_contract.required_directional_evidence).toBe(2);
+    expect(r.results.every(x=>x.directional_evidence.length>=2)).toBe(true);
+    expect(JSON.parse(db.prepare('SELECT evidence_json FROM analysis_results LIMIT 1').get().evidence_json).length).toBeGreaterThanOrEqual(2);
     expect(db.prepare('SELECT COUNT(*) AS n FROM analysis_results').get().n).toBe(8);
   });
   it('deduplicates cron per candle while allowing repeated manual analyses',async()=>{
@@ -156,11 +162,13 @@ describe('settings, authentication, and Discord delivery',()=>{
     expect((await pipelineStatus(env)).latest.result.delivery.state).toBe('sent');
     expect((await runPipeline(env,{trigger:'cron'})).delivery.state).toBe('sent');
   });
-  it('does not enqueue or send an opposing majority or a three-three tie',async()=>{
+  it('excludes semantic-invalid directional claims and never sends them to Discord',async()=>{
     const {env,db}=use();env.DISCORD_WEBHOOK_URL='https://discord.com/api/webhooks/123/test_token';
-    let n=0;env.AI.run=async()=>({response:JSON.stringify({signal:++n<=5?'SELL':'BUY',reason:'opposing snapshot reading'})});
+    env.AI.run=async()=>({response:JSON.stringify({signal:'SELL',confidence:99,directional_evidence:[],reason:'unsupported opposing claim'})});
     const f=vi.fn();vi.stubGlobal('fetch',f);
-    const r=await runPipeline(env);expect(r.status).toBe('rejected');expect(r.voting.sell).toBe(5);expect(r.majority_signal).toBeNull();expect(f).not.toHaveBeenCalled();expect(db.prepare('SELECT COUNT(*) AS n FROM discord_outbox').get().n).toBe(0);
+    const r=await runPipeline(env);expect(r.status).toBe('rejected');expect(r.voting.sell).toBe(0);expect(r.voting.success).toBe(0);expect(r.majority_signal).toBeNull();
+    expect(r.results.every(x=>x.error_code==='SEMANTIC_INVALID_AI_RESPONSE')).toBe(true);
+    expect(f).not.toHaveBeenCalled();expect(db.prepare('SELECT COUNT(*) AS n FROM discord_outbox').get().n).toBe(0);
   });
   it('expires old queued signals before a newly configured webhook can send them',async()=>{
     const {env,db}=use();await runPipeline(env);
