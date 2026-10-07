@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseSignal } from "../src/orchestrator/normalizer.js";
+import { parseSignal, parseAnalystDecision } from "../src/orchestrator/normalizer.js";
 
 describe("parseSignal", () => {
   it("parses the standard SIGNAL/REASON format", () => {
@@ -44,5 +44,57 @@ describe("parseSignal", () => {
 
   it("accepts a loose leading keyword", () => {
     expect(parseSignal("BUY - momentum is strong.").signal).toBe("BUY");
+  });
+});
+
+describe("parseAnalystDecision", () => {
+  const context={
+    group:"indicators",
+    parameters:{},
+    frames:{
+      H1:{votes:{ema:"BUY",macd:"BUY",rsi:"NEUTRAL",bollinger:"NEUTRAL",adx:"BUY"}},
+      M5:{votes:{ema:"BUY",macd:"SELL",rsi:"NEUTRAL",bollinger:"NEUTRAL",adx:"BUY"}}
+    }
+  };
+
+  it("accepts strict JSON only when at least two evidence items are snapshot-verifiable", () => {
+    const r=parseAnalystDecision(JSON.stringify({
+      signal:"BUY",confidence:78,
+      directional_evidence:[
+        {timeframe:"H1",metric:"ema",supports:"BUY"},
+        {timeframe:"M5",metric:"adx",supports:"BUY"}
+      ],
+      reason:"Trend and directional strength align."
+    }),context);
+    expect(r.signal).toBe("BUY");expect(r.confidence).toBe(78);expect(r.directional_evidence).toHaveLength(2);
+  });
+
+  it("rejects missing, duplicated, hallucinated, or contradictory evidence", () => {
+    const base={signal:"BUY",confidence:90,reason:"Claim.",directional_evidence:[
+      {timeframe:"H1",metric:"ema",supports:"BUY"},
+      {timeframe:"H1",metric:"macd",supports:"BUY"}
+    ]};
+    expect(()=>parseAnalystDecision(JSON.stringify({...base,directional_evidence:[]}),context)).toThrow();
+    expect(()=>parseAnalystDecision(JSON.stringify({...base,directional_evidence:[base.directional_evidence[0],base.directional_evidence[0]]}),context)).toThrow();
+    expect(()=>parseAnalystDecision(JSON.stringify({...base,directional_evidence:[base.directional_evidence[0],{timeframe:"M5",metric:"macd",supports:"BUY"}]}),context)).toThrow();
+    expect(()=>parseAnalystDecision("SIGNAL: BUY\nCONFIDENCE: 99\nREASON: prose",context)).toThrow();
+    expect(()=>parseAnalystDecision(JSON.stringify({...base,confidence:101}),context)).toThrow();
+  });
+
+  it("does not let one global funding observation count as two evidence items",()=>{
+    const derivatives={
+      group:"derivatives",parameters:{},
+      frames:{
+        H1:{votes:{funding:"BUY",openInterest:"NEUTRAL",longShort:"NEUTRAL",liquidation:"NEUTRAL"}},
+        M5:{votes:{funding:"BUY",openInterest:"NEUTRAL",longShort:"NEUTRAL",liquidation:"NEUTRAL"}}
+      }
+    };
+    expect(()=>parseAnalystDecision(JSON.stringify({
+      signal:"BUY",confidence:70,reason:"Funding is supportive.",
+      directional_evidence:[
+        {timeframe:"H1",metric:"funding",supports:"BUY"},
+        {timeframe:"M5",metric:"funding",supports:"BUY"}
+      ]
+    }),derivatives)).toThrow();
   });
 });
