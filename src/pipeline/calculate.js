@@ -217,7 +217,7 @@ export function meetingDecision(results,deterministicDirection,{weights={},mode=
   const decisive=valid.length>=requiredSuccess&&winnerVotes>=requiredDirectional&&rawMajority&&weightedShare>=minWeightedShare;
   const hasDeterministic=['BUY','SELL'].includes(deterministicDirection);
   const support=hasDeterministic?valid.filter(r=>r.signal===deterministicDirection).length:winnerVotes;
-  let approved=false,majority_signal=null,decision_reason='INSUFFICIENT_WEIGHTED_SUPPORT';
+  let approved=false,majority_signal=null,decision_reason=buy===sell&&buy>0?'RAW_VOTE_TIE':'INSUFFICIENT_WEIGHTED_SUPPORT';
   if(hasDeterministic) {
     if(decisive&&winner===deterministicDirection){approved=true;majority_signal=winner;decision_reason='WEIGHTED_AI_CONFIRMS_DETERMINISTIC';}
     else if(decisive&&winner&&winner!==deterministicDirection)decision_reason='AI_OPPOSES_DETERMINISTIC';
