@@ -226,7 +226,7 @@ export function meetingDecision(results,deterministicDirection,{weights={},mode=
     else if(decisive&&winner&&winner!==deterministicDirection)decision_reason='AI_OPPOSES_DETERMINISTIC';
   } else if(mode==='manual') {
     majority_signal=decisive?winner:null;
-    decision_reason=decisive?'MANUAL_WEIGHTED_MAJORITY':'MANUAL_AI_INCONCLUSIVE';
+    decision_reason=decisive?'MANUAL_WEIGHTED_MAJORITY':buy===sell&&buy>0?'RAW_VOTE_TIE':'MANUAL_AI_INCONCLUSIVE';
   }
   return {buy,sell,no_trade:0,success:valid.length,error:results.length-valid.length,total_models:results.length,support,required:requiredDirectional,approved,majority_signal,decision_reason,raw_majority:rawMajority,weighted_buy:Number(scores.BUY.toFixed(3)),weighted_sell:Number(scores.SELL.toFixed(3)),weighted_share_pct:Number((weightedShare*100).toFixed(2)),minimum_weighted_share_pct:Number((minWeightedShare*100).toFixed(2)),minimum_success:requiredSuccess,weighted_results};
 }
