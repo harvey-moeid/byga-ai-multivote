@@ -28,16 +28,34 @@ export function returnRoute(member) {
   return [[x+.48,z],[x+.48,route[0][1]],...route,[...member.home]];
 }
 
-export function ambientRoute(member, variant = 0) {
+export function ambientRoute(member, variant = 0, targetMember = null) {
   const [x,z]=member.home;
   const analystLabels=['Memeriksa chart','Membandingkan timeframe','Mengambil kopi','Mengecek monitor lain'];
   const bossLabels=['Mengunjungi meja analis','Memeriksa dashboard','Berjalan keliling kantor','Mengecek ruang kerja'];
+  const variantIndex=Math.abs(variant)%bossLabels.length;
   const labels=member.boss?bossLabels:analystLabels;
-  const label=labels[Math.abs(variant)%labels.length];
-  let destination;
-  if (member.boss) {
+  let label=labels[variantIndex], destination, path, angle=member.boss?0:Math.PI, targetId=null;
+
+  if (member.boss && variantIndex === 0) {
+    // Visit a real analyst workstation instead of stopping inside the boss room.
+    // The boss exits through the boss-room door, uses the clear aisle to the
+    // right of the desks, then approaches from behind the analyst's chair.
+    const target=(targetMember && !targetMember.boss && Array.isArray(targetMember.home))
+      ? targetMember
+      : TEAM.find(candidate=>!candidate.boss);
+    const [targetX,targetZ]=target.home;
+    const visitZ=targetZ+.72;
+    const aisleX=.35;
+    destination=[targetX,visitZ];
+    path=[[x+.5,z],[x+.5,-4.8],[-1,-4.8],[-1,-.6],[aisleX,-.6],[aisleX,visitZ],destination];
+    angle=Math.PI;
+    targetId=target.id;
+    label='Mengunjungi meja Analis '+(target.id+1);
+  } else if (member.boss) {
     const points=[[-2.9,-4.55],[-1.05,-1.1],[-3.8,-3.7],[-.6,-4.65]];
-    destination=points[Math.abs(variant)%points.length];
+    destination=points[variantIndex];
+    const corridorZ=-4.8;
+    path=[[x+.5,z],[x+.5,corridorZ],[destination[0],corridorZ],destination];
   } else {
     const points=[
       [Math.min(.2,x+1.0),z+.48],
@@ -45,14 +63,12 @@ export function ambientRoute(member, variant = 0) {
       [-.15,5.05],
       [Math.max(-6.3,x-.75),z+.5]
     ];
-    destination=points[Math.abs(variant)%points.length];
+    destination=points[variantIndex];
+    const corridorZ=z+.45;
+    path=[[x+.5,z],[x+.5,corridorZ],[destination[0],corridorZ],destination];
   }
-  const corridorZ=member.boss?-4.8:z+.45;
-  const path=member.boss
-    ? [[x+.5,z],[x+.5,corridorZ],[destination[0],corridorZ],destination]
-    : [[x+.5,z],[x+.5,corridorZ],[destination[0],corridorZ],destination];
   const back=path.slice(0,-1).reverse().concat([[x,z]]);
-  return {label,path,back,angle:member.boss?0:Math.PI};
+  return {label,path,back,angle,targetId};
 }
 
 export function shortestAngle(current, target) {
