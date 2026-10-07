@@ -117,3 +117,41 @@ jobs:
         env:
           SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
         run: printf '%s' "$SESSION_SECRET" | npx wrangler secret put SESSION_SECRET --config wrangler.scheduler.toml
+
+      - name: Smoke test production
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://byga-ai.muidsoft.com"
+
+          check_url() {
+            local path="$1"
+            local expect_json="${2:-0}"
+            local body code attempt
+            for attempt in {1..12}; do
+              body="$(mktemp)"
+              code="$(curl --silent --show-error --location --max-time 20 --output "$body" --write-out '%{http_code}' "$base$path" || true)"
+              if [ "$code" = "200" ]; then
+                if [ "$expect_json" = "1" ]; then
+                  node -e '
+                    const fs=require("fs");
+                    const body=fs.readFileSync(process.argv[1],"utf8");
+                    const data=JSON.parse(body);
+                    if(data.symbol!=="BTCUSDT.P") throw new Error("Unexpected production symbol");
+                  ' "$body"
+                fi
+                rm -f "$body"
+                echo "Production smoke OK: $path"
+                return 0
+              fi
+              echo "Production smoke attempt $attempt failed for $path (HTTP $code)"
+              cat "$body" || true
+              rm -f "$body"
+              sleep 5
+            done
+            echo "ERROR: production endpoint failed after retries: $path"
+            return 1
+          }
+
+          check_url "/" 0
+          check_url "/api/public-status" 1
