@@ -256,6 +256,7 @@ try {
     const overlaps=button.left<hudRect.right&&button.right>hudRect.left&&button.top<hudRect.bottom&&button.bottom>hudRect.top;
     return {overlaps,hudPointerEvents:getComputedStyle(hud).pointerEvents,buttonTop:button.top,buttonBottom:button.bottom,hudTop:hudRect.top,hudBottom:hudRect.bottom};
   });
+  console.log('Public mobile controls:',publicControlLayout);
   assert.equal(publicControlLayout.overlaps,false,'Public fullscreen control must not overlap the mobile market HUD');
   assert.equal(publicControlLayout.hudPointerEvents,'none','Read-only public market HUD must not intercept pointer events');
   await publicView.click('#fullscreen-toggle');
@@ -275,6 +276,7 @@ try {
   assert.equal(fullscreenLayout.pressed,'true');
   assert.match(fullscreenLayout.label,/Keluar layar penuh/);
   assert.equal(fullscreenLayout.overflow,false);
+  console.log('Public fallback fullscreen:',{controlOverlapsHud:fullscreenLayout.controlOverlapsHud,hudPointerEvents:fullscreenLayout.hudPointerEvents});
   assert.equal(fullscreenLayout.controlOverlapsHud,false,'Fullscreen control must remain clear of the market HUD in fallback fullscreen');
   assert.equal(fullscreenLayout.hudPointerEvents,'none');
   await publicView.click('#fullscreen-toggle');
