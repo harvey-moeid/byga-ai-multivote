@@ -216,7 +216,7 @@ export async function openSettings(onSaved) {
       return '';
     };
     msg=h('p',{class:'settings-save-status',role:'status','aria-live':'polite',text:'Belum ada perubahan.'});
-    save=h('button',{type:'button',class:'office-run settings-save',text:'Simpan pengaturan'});
+    save=h('button',{type:'button',class:'office-run settings-save',text:'Simpan pengaturan','aria-label':'Simpan pengaturan'});
     const actions=h('div',{class:'settings-actions'},msg,save);
     body.append(actions);
     const markDirty=()=>{
