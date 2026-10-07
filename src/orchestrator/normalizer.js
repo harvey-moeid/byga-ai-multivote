@@ -73,18 +73,23 @@ export function parseSignal(input) {
 const ANALYST_EVIDENCE_METRICS = {
   smc_ict: new Set(['structure','sweep','fvg','orderBlock','displacement','bias']),
   indicators: new Set(['ema','rsi','macd','bollinger','adx']),
-  volume: new Set(['flow','candleDirection']),
+  volume: new Set(['cmf','obv','flow','candleDirection']),
   derivatives: new Set(['openInterest','funding','longShort','liquidation'])
 };
 
-function evidenceDirection(group, frame, metric) {
+function evidenceDirection(group, frame, metric, parameters={}) {
   if(!frame)return null;
   if(group==='smc_ict'&&metric==='bias')return frame.measurements?.bias||null;
-  if(group==='volume')return frame.measurements?.[metric]||null;
+  if(group==='volume') {
+    const m=frame.measurements||{};
+    if(metric==='cmf')return Number(m.cmf)>=Number(parameters.cmfMin)?'BUY':Number(m.cmf)<=-Number(parameters.cmfMin)?'SELL':'NEUTRAL';
+    if(metric==='obv')return Number(m.obvChange)>0?'BUY':Number(m.obvChange)<0?'SELL':'NEUTRAL';
+    return m[metric]||null;
+  }
   return frame.votes?.[metric]||null;
 }
 
-export function parseAnalystDecision(input,{group,frames}={}) {
+export function parseAnalystDecision(input,{group,frames,parameters}={}) {
   const text=clean(input);
   let obj;
   try { obj=JSON.parse(text); }
@@ -111,7 +116,7 @@ export function parseAnalystDecision(input,{group,frames}={}) {
     if(!frames?.[timeframe]||!allowed.has(metric)||supports!==signal||seen.has(key)) {
       throw Object.assign(new Error('Directional evidence analis tidak dapat diverifikasi.'),{code:'SEMANTIC_INVALID_AI_RESPONSE'});
     }
-    if(evidenceDirection(group,frames[timeframe],metric)!==signal) {
+    if(evidenceDirection(group,frames[timeframe],metric,parameters)!==signal) {
       throw Object.assign(new Error('Directional evidence tidak didukung snapshot deterministik.'),{code:'SEMANTIC_INVALID_AI_RESPONSE'});
     }
     seen.add(key);verified.push({timeframe,metric,supports});
