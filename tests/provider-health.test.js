@@ -43,11 +43,19 @@ describe('provider health',()=>{
   it('keeps primary failures visible when a character succeeds through fallback',async()=>{
     const fixture=setup();
     try {
+      const analysis=fixture.db.prepare(`INSERT INTO analyses
+        (id,created_at,exchange,symbol,market_type,timeframe,market_snapshot,prompt_version,market_schema_version,majority_signal,decision_reason,buy_votes,sell_votes,no_trade_votes,success_count,error_count,total_models,duration_ms,last_price,price_change_pct_24h)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+      const resultRow=fixture.db.prepare(`INSERT INTO analysis_results
+        (id,analysis_id,provider,provider_label,role,vote_index,vote_group,data_source,status,signal,reason,raw_answer,confidence,evidence_json,duration_ms,error_code,error,adapter_version,created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
       const insert=fixture.db.prepare('INSERT INTO provider_attempts (id,analysis_id,result_id,analyst_id,provider,provider_label,model,attempt_index,status,duration_ms,error_code,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
       for(let i=0;i<3;i++) {
-        const created='2026-10-08T00:0'+(3-i)+':00Z',result='r'+i;
-        insert.run('p'+i,'a'+i,result,'smc_ict_1','groq','Groq','test-model',1,'error',120,'RATE_LIMITED',created);
-        insert.run('f'+i,'a'+i,result,'smc_ict_1','workers-ai','Workers AI','@cf/test',2,'success',80,null,created);
+        const created='2026-10-08T00:0'+(3-i)+':00Z',analysisId='a'+i,result='r'+i;
+        analysis.run(analysisId,created,'chart_db','BTCUSDT.P','perpetual','H1/M15/M5','{}','test','test','BUY','TEST',1,0,0,1,0,1,200,100,null);
+        resultRow.run(result,analysisId,'workers-ai','Workers AI','smc_ict',1,'smc_ict_1','chart_db','success','BUY','ok','{}',80,'[]',200,null,null,'test',created);
+        insert.run('p'+i,analysisId,result,'smc_ict_1','groq','Groq','test-model',1,'error',120,'RATE_LIMITED',created);
+        insert.run('f'+i,analysisId,result,'smc_ict_1','workers-ai','Workers AI','@cf/test',2,'success',80,null,created);
       }
       const health=await getProviderHealth(fixture.env.DB,[
         {provider:'groq',label:'Groq',configured:true},
