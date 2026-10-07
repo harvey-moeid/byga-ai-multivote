@@ -112,7 +112,7 @@ export async function callAnalyst(env,snapshot,analyst) {
     const target=targets[index],attemptStarted=Date.now();
     try {
       const attempt=await runAnalystAttempt(env,snapshot,analyst,target);
-      row.attempts.push({provider:target.provider,model:target.model,status:'success',duration_ms:attempt.duration_ms,error_code:null});
+      row.attempts.push({provider:target.provider,provider_label:attempt.p.meta.providerLabel,model:target.model,status:'success',duration_ms:attempt.duration_ms,error_code:null});
       Object.assign(row,{
         provider:target.provider,provider_label:attempt.p.meta.providerLabel,model:target.model,adapter_version:attempt.p.meta.adapterVersion||'unknown',
         fallback_used:index>0,fallback_reason:index>0?firstFailureCode:null,
@@ -125,7 +125,7 @@ export async function callAnalyst(env,snapshot,analyst) {
     } catch(error) {
       const normalized=normalizedProviderError(error),meta=error?.provider_meta||PROVIDERS.find(p=>p.meta.provider===target.provider);
       const attemptDuration=Number.isFinite(error?.duration_ms)?error.duration_ms:Date.now()-attemptStarted;
-      row.attempts.push({provider:target.provider,model:target.model,status:normalized.status,duration_ms:attemptDuration,error_code:normalized.code});
+      row.attempts.push({provider:target.provider,provider_label:meta?.meta.providerLabel||target.provider,model:target.model,status:normalized.status,duration_ms:attemptDuration,error_code:normalized.code});
       if(index===0)firstFailureCode=normalized.code;
       const canFallback=index===0&&fallback&&shouldFallbackProvider(error);
       if(canFallback)continue;
