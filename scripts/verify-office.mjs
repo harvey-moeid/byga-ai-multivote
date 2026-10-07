@@ -249,12 +249,26 @@ try {
     Object.defineProperty(stage,'requestFullscreen',{value:undefined,configurable:true});
     Object.defineProperty(stage,'webkitRequestFullscreen',{value:undefined,configurable:true});
   });
+  const publicControlLayout=await publicView.evaluate(()=>{
+    const button=document.querySelector('#fullscreen-toggle').getBoundingClientRect();
+    const hud=document.querySelector('.public-market-hud');
+    const hudRect=hud.getBoundingClientRect();
+    const overlaps=button.left<hudRect.right&&button.right>hudRect.left&&button.top<hudRect.bottom&&button.bottom>hudRect.top;
+    return {overlaps,hudPointerEvents:getComputedStyle(hud).pointerEvents,buttonTop:button.top,buttonBottom:button.bottom,hudTop:hudRect.top,hudBottom:hudRect.bottom};
+  });
+  console.log('Public mobile controls:',publicControlLayout);
+  assert.equal(publicControlLayout.overlaps,false,'Public fullscreen control must not overlap the mobile market HUD');
+  assert.equal(publicControlLayout.hudPointerEvents,'none','Read-only public market HUD must not intercept pointer events');
   await publicView.click('#fullscreen-toggle');
   await publicView.waitForFunction(()=>document.body.classList.contains('view-fullscreen-fallback'));
   const fullscreenLayout=await publicView.evaluate(()=>{
     const stage=document.querySelector('#office-stage').getBoundingClientRect();
     const button=document.querySelector('#fullscreen-toggle');
-    return {top:stage.top,left:stage.left,width:stage.width,height:stage.height,viewportWidth:innerWidth,viewportHeight:innerHeight,pressed:button.getAttribute('aria-pressed'),label:button.getAttribute('aria-label'),overflow:document.documentElement.scrollWidth>innerWidth};
+    const buttonRect=button.getBoundingClientRect();
+    const hud=document.querySelector('.public-market-hud');
+    const hudRect=hud.getBoundingClientRect();
+    const controlOverlapsHud=buttonRect.left<hudRect.right&&buttonRect.right>hudRect.left&&buttonRect.top<hudRect.bottom&&buttonRect.bottom>hudRect.top;
+    return {top:stage.top,left:stage.left,width:stage.width,height:stage.height,viewportWidth:innerWidth,viewportHeight:innerHeight,pressed:button.getAttribute('aria-pressed'),label:button.getAttribute('aria-label'),overflow:document.documentElement.scrollWidth>innerWidth,controlOverlapsHud,hudPointerEvents:getComputedStyle(hud).pointerEvents};
   });
   assert(Math.abs(fullscreenLayout.top)<1&&Math.abs(fullscreenLayout.left)<1,'Fullscreen fallback must start at the viewport origin');
   assert(Math.abs(fullscreenLayout.width-fullscreenLayout.viewportWidth)<2,'Fullscreen fallback must cover viewport width');
@@ -262,6 +276,9 @@ try {
   assert.equal(fullscreenLayout.pressed,'true');
   assert.match(fullscreenLayout.label,/Keluar layar penuh/);
   assert.equal(fullscreenLayout.overflow,false);
+  console.log('Public fallback fullscreen:',{controlOverlapsHud:fullscreenLayout.controlOverlapsHud,hudPointerEvents:fullscreenLayout.hudPointerEvents});
+  assert.equal(fullscreenLayout.controlOverlapsHud,false,'Fullscreen control must remain clear of the market HUD in fallback fullscreen');
+  assert.equal(fullscreenLayout.hudPointerEvents,'none');
   await publicView.click('#fullscreen-toggle');
   await publicView.waitForFunction(()=>!document.body.classList.contains('view-fullscreen-fallback'));
   assert.equal(await publicView.locator('#fullscreen-toggle').getAttribute('aria-pressed'),'false');
