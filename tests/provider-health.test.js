@@ -1,5 +1,6 @@
 import { describe,it,expect } from 'vitest';
-import { summarizeProviderHealth } from '../src/lib/providerHealth.js';
+import { getProviderHealth,summarizeProviderHealth } from '../src/lib/providerHealth.js';
+import { setup } from './helpers/pipeline-db.js';
 
 const providers=[
   {provider:'a',label:'Provider A',configured:true},
@@ -37,6 +38,24 @@ describe('provider health',()=>{
     expect(h.state).toBe('HEALTHY');
     expect(h.success_rate_pct).toBe(100);
     expect(h.last_error_code).toBeNull();
+  });
+
+  it('keeps primary failures visible when a character succeeds through fallback',async()=>{
+    const fixture=setup();
+    try {
+      const insert=fixture.db.prepare('INSERT INTO provider_attempts (id,analysis_id,result_id,analyst_id,provider,provider_label,model,attempt_index,status,duration_ms,error_code,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
+      for(let i=0;i<3;i++) {
+        const created='2026-10-08T00:0'+(3-i)+':00Z',result='r'+i;
+        insert.run('p'+i,'a'+i,result,'smc_ict_1','groq','Groq','test-model',1,'error',120,'RATE_LIMITED',created);
+        insert.run('f'+i,'a'+i,result,'smc_ict_1','workers-ai','Workers AI','@cf/test',2,'success',80,null,created);
+      }
+      const health=await getProviderHealth(fixture.env.DB,[
+        {provider:'groq',label:'Groq',configured:true},
+        {provider:'workers-ai',label:'Workers AI',configured:true}
+      ]);
+      expect(health.find(x=>x.provider==='groq').state).toBe('DOWN');
+      expect(health.find(x=>x.provider==='workers-ai').state).toBe('HEALTHY');
+    } finally { fixture.close(); }
   });
 
   it('marks three consecutive failures down and mixed results degraded',()=>{
