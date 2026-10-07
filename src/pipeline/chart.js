@@ -8,27 +8,49 @@ function normalizeDerivativeRows(rows=[]) {
   return rows.map(row=>({ts:Number(row.ts),value:Number(row.value),value2:row.value2==null?null:Number(row.value2),value3:row.value3==null?null:Number(row.value3),source:row.source}))
     .filter(row=>Number.isFinite(row.ts)&&Number.isFinite(row.value));
 }
-async function derivativeRows(db,metric,timeframe,limit,now) {
+async function derivativeRows(db,metric,timeframe,limit,to) {
   try {
-    const r=await db.prepare('SELECT ts,value,value2,value3,source FROM derivative_metrics WHERE symbol = ? AND metric = ? AND timeframe = ? AND ts <= ? ORDER BY ts DESC LIMIT ?').bind('BTCUSDT',metric,timeframe,now,limit).all();
+    const r=await db.prepare('SELECT ts,value,value2,value3,source FROM derivative_metrics WHERE symbol = ? AND metric = ? AND timeframe = ? AND ts <= ? ORDER BY ts DESC LIMIT ?').bind('BTCUSDT',metric,timeframe,to,limit).all();
     return normalizeDerivativeRows((r.results||[]).reverse());
   } catch(error) {
     if(/no such table[^\n]*derivative_metrics/i.test(String(error?.message||error)))return [];
     throw error;
   }
 }
-async function readDerivatives(env,settings,now) {
-  const d=settings.calculation.derivatives,limit=Math.max(8,d.oiLookback+2);
-  const fundingPromise=derivativeRows(env.CHART_DB,'funding_rate','',8,now),frames={};
+function freshDerivativeRows(rows,reference,maxAge) {
+  if(!rows.length)return [];
+  const latest=Number(rows.at(-1)?.ts);
+  if(!Number.isFinite(latest)||reference-latest>maxAge||latest>reference)return [];
+  return rows;
+}
+async function liquidationAggregate(db,frame,candle) {
+  if(!candle)return [];
+  const start=Number(candle.timestamp),end=start+FRAMES[frame];
+  try {
+    const row=await db.prepare("SELECT MAX(ts) AS ts,SUM(value) AS value,SUM(COALESCE(value2,0)) AS value2,SUM(COALESCE(value3,0)) AS value3 FROM derivative_metrics WHERE symbol = ? AND metric = 'liquidation' AND timeframe = 'M5' AND ts >= ? AND ts < ?").bind('BTCUSDT',start,end).first();
+    if(row?.ts==null||row?.value==null)return [];
+    return normalizeDerivativeRows([{ts:Number(row.ts),value:Number(row.value),value2:Number(row.value2||0),value3:Number(row.value3||0),source:frame==='M5'?'binance_futures_ws':'binance_futures_ws_aggregate'}]);
+  } catch(error) {
+    if(/no such table[^\n]*derivative_metrics/i.test(String(error?.message||error)))return [];
+    throw error;
+  }
+}
+async function readDerivatives(env,settings,now,series) {
+  const d=settings.calculation.derivatives,limit=Math.max(8,d.oiLookback+2),frames={};
+  const funding=freshDerivativeRows(await derivativeRows(env.CHART_DB,'funding_rate','',8,now),now,12*3600000);
   await Promise.all([...new Set(Object.values(settings.calculation.frames))].map(async frame=>{
-    const [open_interest,long_short_ratio,liquidation]=await Promise.all([
-      derivativeRows(env.CHART_DB,'open_interest',frame,limit,now),
-      derivativeRows(env.CHART_DB,'long_short_ratio',frame,limit,now),
-      derivativeRows(env.CHART_DB,'liquidation',frame,limit,now)
+    const candles=series[frame]||[],last=candles.at(-1),reference=Number(last?.timestamp);
+    const maxAge=Math.max(15*60000,FRAMES[frame]*2);
+    const [openInterestRows,longShortRows,liquidation]=await Promise.all([
+      derivativeRows(env.CHART_DB,'open_interest',frame,limit,reference),
+      derivativeRows(env.CHART_DB,'long_short_ratio',frame,limit,reference),
+      liquidationAggregate(env.CHART_DB,frame,last)
     ]);
+    const open_interest=freshDerivativeRows(openInterestRows,reference,maxAge);
+    const long_short_ratio=freshDerivativeRows(longShortRows,reference,maxAge);
     frames[frame]={open_interest,long_short_ratio,liquidation};
   }));
-  return {funding:await fundingPromise,frames};
+  return {funding,frames};
 }
 export async function readChart(env,settings,now=Date.now()) {
   if(!env.CHART_DB?.prepare)throw new ChartDataError('Binding CHART_DB belum tersedia.');
@@ -46,5 +68,5 @@ export async function readChart(env,settings,now=Date.now()) {
     if(providers.some(p=>!['bybit','binance_futures','okx_swap'].includes(p)))throw new ChartDataError(`${frame}: sumber perpetual tidak dikenal.`);
     series[frame]=candles;sources[frame]=providers;
   }
-  return {symbol:'BTCUSDT.P',storage_symbol:'BTCUSDT',market_type:'perpetual',data_source:'chart_db',exchange:'chart_db',fetched_at:new Date(now).toISOString(),series,sources,derivatives:await readDerivatives(env,settings,now)};
+  return {symbol:'BTCUSDT.P',storage_symbol:'BTCUSDT',market_type:'perpetual',data_source:'chart_db',exchange:'chart_db',fetched_at:new Date(now).toISOString(),series,sources,derivatives:await readDerivatives(env,settings,now,series)};
 }
