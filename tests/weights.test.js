@@ -44,7 +44,7 @@ describe('adaptive analyst weighting',()=>{
       {analyst_id:'c',status:'success',signal:'BUY',confidence:75},
       {analyst_id:'d',status:'success',signal:'SELL',confidence:60},
       {analyst_id:'e',status:'success',signal:'SELL',confidence:60},
-      {analyst_id:'f',status:'success',signal:'SELL',confidence:60}
+      {analyst_id:'f',status:'success',signal:'BUY',confidence:60}
     ];
     const weights={a:{weight:1.2},b:{weight:1.2},c:{weight:1.2},d:{weight:.8},e:{weight:.8},f:{weight:.8}};
     const r=meetingDecision(results,'BUY',{weights,mode:'auto'});
