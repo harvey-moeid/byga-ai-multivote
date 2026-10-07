@@ -20,6 +20,23 @@ describe('adaptive analyst weighting',()=>{
     expect(weak.weight).toBeLessThan(1);expect(weak.weight).toBeGreaterThanOrEqual(.8);
   });
 
+
+  it('never approves a raw 4-4 split even when reliability weights favor one side',()=>{
+    const results=[
+      ...Array.from({length:4},(_,i)=>({analyst_id:'b'+i,status:'success',signal:'BUY',confidence:100})),
+      ...Array.from({length:4},(_,i)=>({analyst_id:'s'+i,status:'success',signal:'SELL',confidence:0}))
+    ];
+    const weights=Object.fromEntries([
+      ...Array.from({length:4},(_,i)=>['b'+i,{weight:1.2}]),
+      ...Array.from({length:4},(_,i)=>['s'+i,{weight:.8}])
+    ]);
+    const r=meetingDecision(results,'BUY',{weights,mode:'auto'});
+    expect(r.weighted_share_pct).toBeGreaterThan(60);
+    expect(r.raw_majority).toBe(false);
+    expect(r.approved).toBe(false);
+    expect(r.majority_signal).toBeNull();
+  });
+
   it('uses reliability and confidence without allowing one vote to dominate',()=>{
     const results=[
       {analyst_id:'a',status:'success',signal:'BUY',confidence:80},
