@@ -1,47 +1,63 @@
-# BYGA AI — Adaptive Voting & Token Efficiency
+# BYGA AI — Deterministic Gate, Evidence Validation & Adaptive Voting
 
 ## Purpose
-BYGA now uses AI as a second-opinion classifier. Deterministic market and ICT calculations run first; AI calls are gated by evidence.
 
-## Default routing
-- Core: Google Gemini, Groq, OpenRouter
-- Verifier: Hugging Face, Cohere, NVIDIA API Catalog
-- Backup: Mistral AI, SambaNova Cloud, Vercel AI Gateway
+BYGA memakai AI sebagai lapisan review setelah scanner deterministik. Scanner, bukan AI, menentukan apakah AUTO layak membuka meeting. AI tidak menerima arah gate sehingga tidak di-anchor ke keputusan scanner.
 
-## Flow
-Market data -> deterministic ICT context -> setup score -> 3-provider core -> majority -> verifier only on conflict -> backup only after core failure.
+## Production flow
 
-Setup score is a routing gate, not a trading confidence score:
-- HTF alignment +25
-- M5 BOS +25
-- M5 liquidity sweep +20
-- M5 FVG +15
-- M15/H1 FVG +10
-- premium/discount +5
-- M5/H1 bias agreement +5
+1. Baca closed candles BTCUSDT.P dari `chart_db` secara SELECT-only.
+2. Validasi freshness, continuity, OHLC, source, dan kecukupan candle.
+3. Hitung empat group deterministik: SMC/ICT, Indicators, Volume, Derivatives / Market Positioning.
+4. Gabungkan trend / structure / trigger per group.
+5. AUTO hanya memanggil AI bila sekurangnya 2 dari 4 group memberi arah yang sama **dan arah itu mengungguli arah lawan**. Split 2 BUY / 2 SELL adalah `GROUP_CONSENSUS_TIE` dan tidak membuka meeting.
+6. MANUAL tetap memanggil delapan analyst walaupun gate deterministic tidak lolos.
+7. Dua analyst per group menerima hanya snapshot group miliknya, market regime, timeframe roles, dan locked rubric slot masing-masing.
+8. Respons analyst harus JSON dan wajib menyertakan BUY/SELL, confidence 0–100, reason, serta 2–6 `directional_evidence` yang dapat diverifikasi terhadap snapshot. Respons semantic-invalid berstatus error dan tidak ikut voting.
+9. Voting menggabungkan reliability historis 0.8–1.2 dan confidence modifier 0.9–1.1.
+10. Keputusan decisive membutuhkan minimal 2/3 analyst sukses, raw vote pemenang minimal setengah dari total slot, **raw winner harus lebih banyak dari raw loser**, dan weighted share minimal 60%.
+11. AUTO hanya approved bila weighted winner sama dengan deterministic gate. Discord hanya menerima approved result.
 
-Score below 40 skips AI. Valid setups start with up to 3 core calls. Conflicting votes can add up to 2 verifier calls. If all core calls fail, configured backups can be used.
+## Locked analyst rubrics
 
-## Token policy
-- Keep the compact prompt as the canonical prompt.
-- Do not send verbose reasoning requirements.
-- Prefer deterministic summaries over repeated raw historical candles.
-- Provider-specific reasoning/thinking blocks are not persisted as final answers.
-- Gemini 2.5+ supports implicit context caching. Gemini 3.8 Flash has a 4,096-token minimum for implicit caching. Keep stable prefixes together if a future prompt is large; do not inflate a short prompt just to reach the cache threshold.
+- `smc_ict_1`: structure confluence.
+- `smc_ict_2`: structure invalidation / adversarial review.
+- `indicators_1`: trend + momentum confirmation.
+- `indicators_2`: indicator contradiction / overextension review.
+- `volume_1`: flow confirmation.
+- `volume_2`: flow divergence review.
+- `derivatives_1`: positioning confirmation.
+- `derivatives_2`: positioning invalidation / squeeze-risk review.
 
-## Configuration
-Optional environment variables:
-AI_CORE_PROVIDERS=google-gemini,groq,openrouter
-AI_VERIFIER_PROVIDERS=hugging-face,cohere,nvidia-api-catalog
-AI_BACKUP_PROVIDERS=mistral-ai,sambanova-cloud,vercel-ai-gateway
+Prompt produksi berada di `src/pipeline/run.js`. `src/prompt/builder.js` adalah jalur legacy dan bukan prompt manual/cron produksi saat ini.
 
-These control routing order only. Provider API credentials remain separate.
+## Derivatives safety
 
-## Dashboard/API metadata
-Analysis responses now expose routing.gate, routing.setup_score, routing.reasons, routing.ai_calls, and routing.stages_used. The existing voting result remains compatible.
+- Open Interest dan Long/Short Ratio harus fresh relatif terhadap timeframe.
+- Funding memakai freshness window terpisah karena cadence funding lebih lambat.
+- OI memakai configured lookback penuh; data tidak boleh diam-diam memakai lookback yang lebih pendek.
+- Perubahan OI hanya dihitung pada trailing rows dari source yang sama.
+- OI price confirmation disejajarkan berdasarkan timestamp candle dan expected timeframe span, bukan indeks array.
+- Liquidation upstream M5 diagregasi ke interval timeframe yang sedang dinilai.
+- Evidence kurang, stale, cross-source, atau misaligned menjadi NETRAL; tidak dibuat menjadi directional vote.
+- `chart_db` tetap read-only dari repository ini.
 
-## Provider notes
-Cohere Command A+ can return a content list containing thinking and text blocks. BYGA extracts only text. NVIDIA async responses can return HTTP 202 and require request-id polling.
+## Adaptive reliability
 
-## Operational target
-Typical valid setup: 3 AI calls. Conflict: up to 5. Weak setup: 0. This is an adaptive budget, not a guarantee of lower billing because provider pricing, quotas and cache hits vary.
+Reliability dihitung per slot+provider dari outcome harga sekitar dua jam setelah vote. Bila minimal 12 sampel tersedia pada market regime yang sama, regime itu diprioritaskan; jika belum, histori slot+provider dipakai. Accuracy di-shrink ke prior 50% dan weight dibatasi 0.8–1.2. Bila histori tidak cukup atau query gagal, weight kembali ke 1.0.
+
+Confidence model tidak diperlakukan sebagai probabilitas terkalibrasi. Ia hanya memodifikasi weight secara kecil pada rentang 0.9–1.1.
+
+## Provider health
+
+`SEMANTIC_INVALID_AI_RESPONSE` berarti provider berhasil menjawab tetapi output model gagal kontrak trading. Kesalahan ini dikeluarkan dari vote, tetapi tidak diklasifikasikan sebagai outage provider. Timeout, auth, rate limit, network, dan upstream server error tetap memengaruhi Provider Health.
+
+## Auditability
+
+- Production prompt version: `4.0.0`.
+- Deterministic engine version: `3.2.0`.
+- Market schema version: `3.2.0`.
+- Provider adapter version berasal dari adapter provider aktual.
+- Directional evidence yang sudah diverifikasi dipersist ke `analysis_results.evidence_json`.
+- Provider/model failure tidak pernah diubah menjadi fake BUY/SELL.
+- Legacy `NO_TRADE` tetap dapat muncul pada compatibility/history fields, tetapi analyst produksi hanya boleh BUY atau SELL.
