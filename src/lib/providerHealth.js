@@ -50,11 +50,26 @@ export async function getProviderHealth(db,providers,{sampleLimit=12}={}) {
   try {
     const q=await db.prepare(`SELECT provider,status,error_code,duration_ms,created_at FROM (
       SELECT provider,status,error_code,duration_ms,created_at,
-      ROW_NUMBER() OVER (PARTITION BY provider ORDER BY created_at DESC) AS rn
-      FROM analysis_results
+      ROW_NUMBER() OVER (PARTITION BY provider ORDER BY created_at DESC,attempt_index DESC) AS rn
+      FROM (
+        SELECT provider,status,error_code,duration_ms,created_at,attempt_index FROM provider_attempts
+        UNION ALL
+        SELECT ar.provider,ar.status,ar.error_code,ar.duration_ms,ar.created_at,1 AS attempt_index
+        FROM analysis_results ar
+        WHERE NOT EXISTS (SELECT 1 FROM provider_attempts pa WHERE pa.result_id=ar.id)
+      )
     ) WHERE rn<=? ORDER BY provider,created_at DESC`).bind(sampleLimit).all();
     return summarizeProviderHealth(q.results||[],providers);
   } catch {
-    return summarizeProviderHealth([],providers);
+    try {
+      const legacy=await db.prepare(`SELECT provider,status,error_code,duration_ms,created_at FROM (
+        SELECT provider,status,error_code,duration_ms,created_at,
+        ROW_NUMBER() OVER (PARTITION BY provider ORDER BY created_at DESC) AS rn
+        FROM analysis_results
+      ) WHERE rn<=? ORDER BY provider,created_at DESC`).bind(sampleLimit).all();
+      return summarizeProviderHealth(legacy.results||[],providers);
+    } catch {
+      return summarizeProviderHealth([],providers);
+    }
   }
 }
