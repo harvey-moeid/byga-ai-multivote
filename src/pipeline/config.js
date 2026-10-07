@@ -17,19 +17,37 @@ export function providerAvailable(provider, env) {
 export function defaultSettings(env) {
   const ready=PROVIDERS.filter(p=>providerAvailable(p,env));
   const defaults=ready.length?ready:PROVIDERS.filter(p=>p.meta.provider==='workers-ai');
-  return {version:2,symbol:'BTCUSDT.P',calculation:structuredClone(DEFAULT_CALCULATION),cronEnabled:true,discordEnabled:true,
-    analysts:SLOT_IDS.map((id,i)=>{const p=defaults[i%defaults.length];return {id,name:['SMC/ICT','Indikator','Volume','Derivatif'][Math.floor(i/2)]+' '+(i%2+1),group:GROUPS[Math.floor(i/2)],provider:p.meta.provider,model:String(env[p.meta.modelEnv]||p.meta.modelId)};})};
+  return {version:3,symbol:'BTCUSDT.P',calculation:structuredClone(DEFAULT_CALCULATION),cronEnabled:true,discordEnabled:true,
+    analysts:SLOT_IDS.map((id,i)=>{
+      const p=defaults[i%defaults.length],fallback=defaults.length>1?defaults[(i+1)%defaults.length]:null;
+      return {
+        id,
+        name:['SMC/ICT','Indikator','Volume','Derivatif'][Math.floor(i/2)]+' '+(i%2+1),
+        group:GROUPS[Math.floor(i/2)],
+        provider:p.meta.provider,
+        model:String(env[p.meta.modelEnv]||p.meta.modelId),
+        fallback:fallback?{provider:fallback.meta.provider,model:String(env[fallback.meta.modelEnv]||fallback.meta.modelId)}:null
+      };
+    })};
 }
 const ranges={candleLimit:[100,1000],smc:{swing:[1,10],range:[20,200],eventWindow:[1,50],atrPeriod:[5,50],displacement:[.1,5],fvgAtr:[0,2],threshold:[1,5]},indicators:{emaFast:[2,100],emaSlow:[3,200],rsiPeriod:[2,50],rsiBuy:[50,90],rsiSell:[10,50],macdFast:[2,50],macdSlow:[3,100],macdSignal:[2,50],bbPeriod:[5,100],bbStd:[.5,4],adxPeriod:[5,50],adxMin:[0,60],threshold:[1,5]},volume:{period:[5,100],rvolMin:[.1,5],cmfMin:[.001,.5],obvLookback:[2,100]},derivatives:{oiLookback:[1,20],oiChangeMinPct:[0,20],priceMoveMinPct:[0,10],fundingExtremePct:[.001,1],longShortExtreme:[1.01,5],liquidationImbalance:[1,10],liquidationMinUsd:[0,1000000000],threshold:[1,4]}};
 const decimals=new Set(['displacement','fvgAtr','rsiBuy','rsiSell','bbStd','adxMin','rvolMin','cmfMin','oiChangeMinPct','priceMoveMinPct','fundingExtremePct','longShortExtreme','liquidationImbalance']);
 function bad(message){throw Object.assign(new Error(message),{code:'INVALID_SETTINGS'});}
 function migrateLegacySettings(input,env) {
   if(!input||typeof input!=='object')return input;
-  if(!(Number(input.version||1)<=1&&Array.isArray(input.analysts)&&input.analysts.length===6))return input;
   const defaults=defaultSettings(env),migrated=structuredClone(input);
-  migrated.version=2;
-  migrated.calculation={...defaults.calculation,...(migrated.calculation||{}),derivatives:{...defaults.calculation.derivatives,...(migrated.calculation?.derivatives||{})}};
-  migrated.analysts=[...migrated.analysts,...defaults.analysts.slice(6)];
+  if(Number(migrated.version||1)<=1&&Array.isArray(migrated.analysts)&&migrated.analysts.length===6) {
+    migrated.calculation={...defaults.calculation,...(migrated.calculation||{}),derivatives:{...defaults.calculation.derivatives,...(migrated.calculation?.derivatives||{})}};
+    migrated.analysts=[...migrated.analysts,...defaults.analysts.slice(6)];
+  }
+  if(Number(migrated.version||1)<=2) {
+    migrated.version=3;
+    migrated.analysts=SLOT_IDS.map((id,i)=>{
+      const current=Array.isArray(migrated.analysts)?migrated.analysts.find(x=>x.id===id):null;
+      if(!current)return defaults.analysts[i];
+      return {...current,fallback:current.fallback===undefined?defaults.analysts[i].fallback:current.fallback};
+    });
+  }
   return migrated;
 }
 export function validateSettings(input,env) {
@@ -59,7 +77,14 @@ export function validateSettings(input,env) {
     const p=PROVIDERS.find(p=>p.meta.provider===a?.provider);
     if(!p || typeof a.model!=='string'||!MODEL_RE.test(a.model.trim()))bad(`Provider/model ${id} tidak valid.`);
     if(typeof a.name!=='string'||!a.name.trim()||a.name.length>40)bad(`Nama ${id} harus 1–40 karakter.`);
-    return {id,name:a.name.trim(),group:GROUPS[Math.floor(index/2)],provider:p.meta.provider,model:a.model.trim()};
+    let fallback=null;
+    if(a.fallback!==undefined&&a.fallback!==null) {
+      const fp=PROVIDERS.find(candidate=>candidate.meta.provider===a.fallback?.provider);
+      const fm=typeof a.fallback?.model==='string'?a.fallback.model.trim():'';
+      if(!fp||fp.meta.provider===p.meta.provider||!MODEL_RE.test(fm))bad(`Fallback provider/model ${id} tidak valid atau sama dengan provider utama.`);
+      fallback={provider:fp.meta.provider,model:fm};
+    }
+    return {id,name:a.name.trim(),group:GROUPS[Math.floor(index/2)],provider:p.meta.provider,model:a.model.trim(),fallback};
   });
   for(const k of ['cronEnabled','discordEnabled']) {if(typeof input[k]!=='boolean')bad(`${k} harus boolean.`);out[k]=input[k];}
   return out;
