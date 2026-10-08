@@ -92,8 +92,25 @@ export function validateSettings(input,env) {
 export async function loadSettings(env) {
   const row=await env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind('pipeline_settings').first();
   if(!row)return defaultSettings(env);
-  // Invalid saved configuration fails closed rather than silently changing signals.
-  return validateSettings(JSON.parse(row.value),env);
+  // Recover only obsolete fallback references in stored settings. A fallback is
+  // optional, so disabling an unusable one preserves the primary vote. Never
+  // relax validation for new PUT requests or silently repair primary models.
+  const saved=JSON.parse(row.value);
+  const migrated=migrateLegacySettings(saved,env);
+  if(Array.isArray(migrated?.analysts)) {
+    for(const analyst of migrated.analysts) {
+      if(analyst?.fallback == null)continue;
+      const fallback=analyst.fallback;
+      const known=PROVIDERS.some(p=>p.meta.provider===fallback.provider);
+      const model=typeof fallback.model==='string'?fallback.model.trim():'';
+      if(!known||fallback.provider===analyst.provider||!MODEL_RE.test(model)) {
+        console.warn('Disabling invalid saved fallback for analyst',analyst.id);
+        analyst.fallback=null;
+      }
+    }
+  }
+  // Other invalid persisted values still fail closed.
+  return validateSettings(migrated,env);
 }
 export async function saveSettings(env,input) {
   const settings=validateSettings(input,env);
