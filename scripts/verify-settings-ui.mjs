@@ -62,7 +62,7 @@ try{
   const payload=request.postDataJSON();
   assert.equal(payload.settings.analysts[0].name,'SMC Lead','Edited analyst name must be sent to Settings API');
   await page.waitForFunction(()=>/Tersimpan|Pengaturan sudah tersimpan/.test(document.querySelector('.settings-save-status').textContent));
-  await page.waitForFunction(()=>!document.querySelector('.settings-save').disabled,{timeout:10000});
+  await page.waitForFunction(()=>!document.querySelector('.settings-save').disabled,null,{timeout:10000});
   assert.equal(await page.locator('.settings-save').isDisabled(),false,'Save button must recover after successful save');
 
   console.log('PASS: settings UI is mobile-safe, labelled, health-aware, and saves the full analyst configuration.');
