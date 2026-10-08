@@ -1,6 +1,6 @@
 import { describe,it,expect,vi,afterEach } from 'vitest';
 import { calculateSnapshot,groupConsensus,meetingDecision,combineFrames,rsi,ema,adx,volumeFrame,derivativesFrame,smcFrame } from '../src/pipeline/calculate.js';
-import { defaultSettings,validateSettings } from '../src/pipeline/config.js';
+import { defaultSettings,validateSettings,loadSettings } from '../src/pipeline/config.js';
 import { readChart } from '../src/pipeline/chart.js';
 import { runPipeline,callAnalyst,analystPrompt,pipelineStatus } from '../src/pipeline/run.js';
 import { sealWebhook,openWebhook,verifyCron,cronSignature,flushDiscord } from '../src/pipeline/discord.js';
@@ -206,5 +206,31 @@ describe('settings, authentication, and Discord delivery',()=>{
     db.prepare('INSERT INTO app_settings VALUES (?,?,?)').run('pipeline_settings',JSON.stringify(settings),'now');
     expect((await runPipeline(env,{trigger:'cron'})).status).toBe('disabled');
     const res=await onRequestPost({env,request:new Request('https://x/api/analyze',{method:'POST'})});expect(res.status).toBe(415);
+  });
+});
+
+describe('saved fallback recovery',()=>{
+  it('disables same-provider and invalid saved fallbacks without changing primary analysts',async()=>{
+    const saved=defaultSettings({});
+    saved.analysts[0].fallback={provider:saved.analysts[0].provider,model:saved.analysts[0].model};
+    saved.analysts[1].fallback={provider:'removed-provider',model:'model'};
+    saved.analysts[2].fallback={provider:'groq',model:'invalid model with spaces'};
+    const env={DB:{prepare:()=>({bind:()=>({first:async()=>({value:JSON.stringify(saved)})})})}};
+    const loaded=await loadSettings(env);
+    expect(loaded.analysts.slice(0,3).map(a=>a.fallback)).toEqual([null,null,null]);
+    expect(loaded.analysts.map(a=>a.provider)).toEqual(saved.analysts.map(a=>a.provider));
+    expect(loaded.analysts.map(a=>a.model)).toEqual(saved.analysts.map(a=>a.model));
+    expect(saved.analysts[0].fallback).not.toBeNull();
+  });
+  it('keeps strict validation for newly submitted duplicate fallbacks',()=>{
+    const settings=defaultSettings({});
+    settings.analysts[0].fallback={provider:settings.analysts[0].provider,model:'different-model'};
+    expect(()=>validateSettings(settings,{})).toThrow(/Fallback provider\/model smc_ict_1/);
+  });
+  it('does not hide invalid saved primary models',async()=>{
+    const saved=defaultSettings({});
+    saved.analysts[0].model='invalid model with spaces';
+    const env={DB:{prepare:()=>({bind:()=>({first:async()=>({value:JSON.stringify(saved)})})})}};
+    await expect(loadSettings(env)).rejects.toThrow(/Provider\/model smc_ict_1/);
   });
 });
